@@ -15,3 +15,5 @@
 | Gemini deprecations           | https://ai.google.dev/gemini-api/docs/deprecations           | Model shutdown status must be rechecked before release.                                                                 |
 
 No paid service or external AI call is required for the deterministic payment-status path.
+
+The PostgreSQL application role must not be a superuser or have `BYPASSRLS`; using the bootstrap superuser for application queries would invalidate the RLS security boundary.

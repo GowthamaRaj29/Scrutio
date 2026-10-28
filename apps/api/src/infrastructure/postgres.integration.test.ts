@@ -13,7 +13,7 @@ void test('PostgreSQL migration and tenant-scoped payment lookup', async (contex
     return;
   }
 
-  await runMigrations(config.databaseUrl);
+  await runMigrations(config.databaseAdminUrl ?? config.databaseUrl);
   const database = new Database(config.databaseUrl);
   const organizationId = '00000000-0000-0000-0000-000000000001';
   const otherOrganizationId = '00000000-0000-0000-0000-000000000002';

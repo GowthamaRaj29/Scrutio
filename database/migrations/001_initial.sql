@@ -36,3 +36,5 @@ ALTER TABLE payments FORCE ROW LEVEL SECURITY;
 CREATE POLICY payments_organization_isolation ON payments
   USING (organization_id = NULLIF(current_setting('app.organization_id', true), '')::UUID)
   WITH CHECK (organization_id = NULLIF(current_setting('app.organization_id', true), '')::UUID);
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON organizations, payments TO scrutio_app;

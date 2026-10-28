@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { loadConfig } from '../../config/index.js';
 import { Database } from '../postgres/database.js';
 
-const migrationNameSchema = z.string().regex(/^\d{3}_[a-z0-9-]+\.sql$/);
+const migrationNameSchema = z.string().regex(/^\d{3}_[a-z0-9_-]+\.sql$/);
 const migrationsDirectory = join(
   dirname(fileURLToPath(import.meta.url)),
   '../../../../../database/migrations',
@@ -44,8 +44,9 @@ export async function runMigrations(databaseUrl: string): Promise<void> {
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const config = loadConfig();
-  if (config.databaseUrl === undefined) {
-    throw new Error('DATABASE_URL is required to run migrations');
+  const migrationDatabaseUrl = config.databaseAdminUrl ?? config.databaseUrl;
+  if (migrationDatabaseUrl === undefined) {
+    throw new Error('DATABASE_ADMIN_URL or DATABASE_URL is required to run migrations');
   }
-  await runMigrations(config.databaseUrl);
+  await runMigrations(migrationDatabaseUrl);
 }

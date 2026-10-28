@@ -4,7 +4,7 @@
 
 1. Establish reproducible package, TypeScript, lint, formatting, and test tooling. **Complete.**
 2. Verify the baseline with `npm run check`. **Complete.**
-3. Add PostgreSQL pool, transaction context, repository, migration runner, and integration tests. **Implemented, integration execution blocked by missing PostgreSQL.**
+3. Add PostgreSQL pool, transaction context, repository, migration runner, and integration tests. **Complete.**
 4. Add authentication, sessions, authorization, audit events, and security tests.
 5. Implement deterministic payment and incident rule engine with the documented rule/scenario matrix.
 6. Add bounded cache, outbox invalidation, and single-flight tests.
