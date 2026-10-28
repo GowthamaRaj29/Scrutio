@@ -18,4 +18,8 @@
 
 No paid service or external AI call is required for the deterministic payment-status path.
 
+The deterministic investigation engine introduced no dependency changes; it uses the existing
+TypeScript, Zod, and PostgreSQL stack. Rule thresholds are validated through the existing
+configuration module.
+
 The PostgreSQL application role must not be a superuser or have `BYPASSRLS`; using the bootstrap superuser for application queries would invalidate the RLS security boundary.

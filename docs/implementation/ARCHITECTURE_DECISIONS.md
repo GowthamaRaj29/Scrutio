@@ -12,3 +12,11 @@
 - Security audit events record event type and identifiers only. Passwords, raw tokens, cookies, and credentials are excluded.
 
 Registration, password recovery, social login, and distributed rate limiting are intentionally outside this phase.
+
+## Deterministic investigation engine
+
+- Rule evaluation is a pure application boundary over validated evidence; it does not call an AI provider.
+- Evidence is normalized with Zod before evaluation. Missing optional sources produce `INSUFFICIENT_EVIDENCE`; they are never interpreted as false or zero.
+- Rule IDs and the rule-set version are present on every evaluation and finding. Findings and evidence references use stable lexical ordering.
+- Thresholds are typed environment configuration with validated defaults, not scattered literals in rule conditionals.
+- The engine currently supports the payment/order/webhook evidence available to the repository. Rules requiring authoritative order, webhook, ledger, settlement, and pattern tables remain blocked until those schemas are added.

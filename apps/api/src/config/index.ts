@@ -11,6 +11,8 @@ const environmentSchema = z.object({
   AI_PROMPT_VERSION: z.coerce.number().int().positive().default(1),
   CACHE_MAX_ENTRIES: z.coerce.number().int().positive().default(500),
   CACHE_PAYMENT_STATUS_TTL_MS: z.coerce.number().int().positive().default(30_000),
+  INCIDENT_PENDING_PAYMENT_THRESHOLD_MINUTES: z.coerce.number().int().positive().default(30),
+  INCIDENT_WEBHOOK_UNPROCESSED_THRESHOLD_MINUTES: z.coerce.number().int().positive().default(5),
 });
 
 export type AppConfig = {
@@ -24,6 +26,8 @@ export type AppConfig = {
   aiPromptVersion: number;
   cacheMaxEntries: number;
   cachePaymentStatusTtlMs: number;
+  incidentPendingPaymentThresholdMinutes: number;
+  incidentWebhookUnprocessedThresholdMinutes: number;
 };
 
 export function loadConfig(environment: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -45,5 +49,8 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env): AppCon
     aiPromptVersion: parsed.AI_PROMPT_VERSION,
     cacheMaxEntries: parsed.CACHE_MAX_ENTRIES,
     cachePaymentStatusTtlMs: parsed.CACHE_PAYMENT_STATUS_TTL_MS,
+    incidentPendingPaymentThresholdMinutes: parsed.INCIDENT_PENDING_PAYMENT_THRESHOLD_MINUTES,
+    incidentWebhookUnprocessedThresholdMinutes:
+      parsed.INCIDENT_WEBHOOK_UNPROCESSED_THRESHOLD_MINUTES,
   };
 }

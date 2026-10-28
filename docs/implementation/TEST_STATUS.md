@@ -69,3 +69,25 @@ PostgreSQL integration and migration execution require a live PostgreSQL `DATABA
 - Login rate limiting and security audit writes were exercised.
 
 Limitations: login limiting is process-local and therefore not a distributed deployment control; registration, recovery, and role-specific administrative endpoints are not part of this phase.
+
+## Deterministic investigation verification — 2026-10-28
+
+Targeted command:
+
+```text
+npx tsx --test apps/api/src/services/investigation-engine.test.ts
+```
+
+Result: 6 passed, 0 failed.
+
+Verified behaviors:
+
+- SC-01 payment/order/ledger mismatch findings.
+- Inclusive threshold and below-threshold behavior.
+- Missing evidence produces `INSUFFICIENT_EVIDENCE`, not a confirmation.
+- Unverified processed webhook detection.
+- Stable rule ordering and repeatable output for identical inputs.
+- Malformed amounts and timestamps are rejected.
+
+The complete 63-rule matrix is not complete because the current database has no authoritative
+orders, webhook events, ledger entries, journal lines, settlements, or pattern aggregate schemas.
