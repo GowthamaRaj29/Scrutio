@@ -46,3 +46,26 @@ PostgreSQL integration and migration execution require a live PostgreSQL `DATABA
 - Fresh bootstrap applied `001_initial.sql` and `002_app_role_grants.sql`; RLS was enabled and forced; `scrutio_app` was verified non-superuser and non-bypass-RLS
 - Fresh bootstrap role creation is migration-managed and does not require committed credentials or a platform-specific init script.
 - The local `.env` contains a credential value that must be rotated before any external AI integration is enabled; it is ignored by Git and was not committed.
+
+## Authentication verification — 2026-10-28
+
+`npm run check` passed:
+
+- Prettier formatting, ESLint, strict TypeScript, 5 unit tests, and production build.
+
+`npm run migrate` passed:
+
+- Applied `003_authentication.sql` to the local PostgreSQL database.
+
+`npm run test:integration` passed:
+
+- 2 PostgreSQL integration tests passed.
+- Password hashes are verified using Node.js `crypto.scrypt`; plaintext passwords are not stored.
+- Valid, invalid, expired, and revoked sessions were exercised.
+- Authenticated payment lookup succeeded only for the session organization.
+- A URL organization override returned `403`.
+- Logout invalidated subsequent protected requests.
+- Transaction-local tenant context was cleared between pooled connections.
+- Login rate limiting and security audit writes were exercised.
+
+Limitations: login limiting is process-local and therefore not a distributed deployment control; registration, recovery, and role-specific administrative endpoints are not part of this phase.

@@ -15,7 +15,7 @@ export class PaymentNotFoundError extends Error {
 export class PaymentStatusService {
   public constructor(
     private readonly repository: PaymentRepository,
-    private readonly cache: PaymentStatusCache,
+    public readonly cache: PaymentStatusCache,
   ) {}
 
   public async getStatus(

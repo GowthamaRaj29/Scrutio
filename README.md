@@ -28,3 +28,5 @@ docker compose stop postgres
 The Compose file uses a named `scrutio-postgres` volume. Stopping the service preserves the database; do not remove the volume unless the database is intentionally being destroyed. Use `docker system df` before any Docker cleanup.
 
 The payment-status path is intentionally implemented before AI integration. Its response includes `aiInvocations: 0` so tests can prove the zero-LLM invariant.
+
+Authentication is database-backed. Login creates an expiring server-side session whose token is stored only as a hash; protected payment requests derive tenant context from that session and PostgreSQL RLS. Run `npm run migrate` before starting the API.

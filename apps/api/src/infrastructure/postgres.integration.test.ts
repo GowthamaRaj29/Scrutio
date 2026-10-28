@@ -60,6 +60,13 @@ void test('PostgreSQL migration and tenant-scoped payment lookup', async (contex
       ),
     );
     assert.equal(crossTenantPayment, null);
+    const contextClearedCount = await database.withTransaction(null, async (client) => {
+      const result = await client.query<{ count: string }>(
+        'SELECT COUNT(*)::text AS count FROM payments',
+      );
+      return result.rows[0]?.count;
+    });
+    assert.equal(contextClearedCount, '0');
   } finally {
     await database.withTransaction(organizationId, async (client) => {
       await client.query('DELETE FROM payments WHERE payment_id = $1', ['PAY-DB-001']);

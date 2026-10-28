@@ -1,14 +1,17 @@
 import { createApp } from './app.js';
 import { loadConfig } from './config/index.js';
-import { InMemoryPaymentRepository } from './infrastructure/repositories/in-memory-payment-repository.js';
 import { PaymentStatusCache } from './infrastructure/cache/payment-status-cache.js';
-import { PaymentStatusService } from './services/payment-status-service.js';
+import { Database } from './infrastructure/postgres/database.js';
+import { AuthService } from './services/auth-service.js';
 
 const config = loadConfig();
-const repository = new InMemoryPaymentRepository();
+if (config.databaseUrl === undefined) {
+  throw new Error('DATABASE_URL is required to start the API');
+}
+const database = new Database(config.databaseUrl);
 const cache = new PaymentStatusCache(config.cacheMaxEntries, config.cachePaymentStatusTtlMs);
-const paymentStatusService = new PaymentStatusService(repository, cache);
+const authService = new AuthService(database);
 
-createApp(paymentStatusService).listen(config.port, () => {
+createApp({ paymentStatusCache: cache, authService, database }).listen(config.port, () => {
   console.log('Scrutio API listening on port', config.port);
 });
