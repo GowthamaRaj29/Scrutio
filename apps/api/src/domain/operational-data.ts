@@ -36,7 +36,7 @@ export type PersistedInvestigationFinding = {
   investigationId: string;
   ruleId: string;
   ruleVersion: string;
-  severity: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  severity: 'INFO' | 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
   status: 'MATCH' | 'NO_MATCH' | 'INSUFFICIENT_EVIDENCE';
   explanation: string;
 };

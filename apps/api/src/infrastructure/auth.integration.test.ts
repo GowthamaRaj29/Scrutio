@@ -382,7 +382,7 @@ void test('PostgreSQL authentication sessions are tenant-scoped and revocable', 
           }>;
         };
       };
-      assert.equal(investigation.status, 'COMPLETED');
+      assert.equal(investigation.status, 'PARTIAL');
       const duplicateReferenceFinding = investigation.result.findings.find(
         (finding) => finding.ruleId === 'R060',
       );

@@ -42,9 +42,129 @@ void test('SC-01 detects a successful payment with a pending order and no ledger
   const result = new InvestigationEngine().evaluate(evidence(), evaluatedAt);
   assert.deepEqual(
     result.findings.map((finding) => finding.ruleId),
-    ['R001', 'R020', 'R021'],
+    ['R001', 'R021'],
   );
   assert.equal(result.findings[0]?.ruleVersion, '2026-10-28.v1');
+});
+
+void test('R039 requires an unprocessed webhook and preserves R021 independence', () => {
+  const stalledEvidence = {
+    ...evidence(),
+    webhook: {
+      eventId: 'WHK-STALL',
+      paymentId: 'PAY-10001',
+      signatureVerified: true,
+      processingStatus: 'RECEIVED' as const,
+      receivedAt: '2026-10-28T11:59:00.000Z',
+    },
+  };
+  const withUnprocessedWebhook = new InvestigationEngine().evaluate(stalledEvidence, evaluatedAt);
+  assert.equal(
+    withUnprocessedWebhook.evaluations.find((item) => item.ruleId === 'R021')?.status,
+    'MATCH',
+  );
+  const r039 = withUnprocessedWebhook.findings.find((finding) => finding.ruleId === 'R039');
+  assert.ok(r039);
+  assert.equal(r039.severity, 'CRITICAL');
+  assert.deepEqual(r039.evidenceReferences, [
+    'order.status',
+    'payment.ledgerEntryPresent',
+    'payment.status',
+    'webhook.processingStatus',
+  ]);
+  const processed = new InvestigationEngine().evaluate(
+    {
+      ...stalledEvidence,
+      webhook: { ...stalledEvidence.webhook, processingStatus: 'PROCESSED' },
+    },
+    evaluatedAt,
+  );
+  assert.equal(processed.evaluations.find((item) => item.ruleId === 'R039')?.status, 'NO_MATCH');
+});
+
+void test('R020 detects late webhook receipt after a settled settlement', () => {
+  const result = new InvestigationEngine().evaluate(
+    {
+      ...evidence(),
+      webhook: {
+        eventId: 'WHK-LATE',
+        paymentId: 'PAY-10001',
+        signatureVerified: true,
+        processingStatus: 'PROCESSED',
+        receivedAt: '2026-10-28T12:05:00.000Z',
+      },
+      settlement: {
+        settlementId: 'STL-1',
+        status: 'SETTLED',
+        amount: '1000.00',
+        currency: 'INR',
+        settledAt: '2026-10-28T12:00:00.000Z',
+      },
+    },
+    evaluatedAt,
+  );
+  const finding = result.findings.find((item) => item.ruleId === 'R020');
+  assert.ok(finding);
+  assert.equal(finding.severity, 'INFO');
+});
+
+void test('R020 does not match an early or incomplete webhook settlement timeline', () => {
+  const engine = new InvestigationEngine();
+  const base = {
+    ...evidence(),
+    webhook: {
+      eventId: 'WHK-EARLY',
+      paymentId: 'PAY-10001',
+      signatureVerified: true,
+      processingStatus: 'PROCESSED' as const,
+      receivedAt: '2026-10-28T11:55:00.000Z',
+    },
+    settlement: {
+      settlementId: 'STL-1',
+      status: 'SETTLED' as const,
+      amount: '1000.00',
+      currency: 'INR',
+      settledAt: '2026-10-28T12:00:00.000Z',
+    },
+  };
+  assert.equal(
+    engine.evaluate(base, evaluatedAt).evaluations.find((item) => item.ruleId === 'R020')?.status,
+    'NO_MATCH',
+  );
+  assert.equal(
+    engine
+      .evaluate({ ...base, settlement: null }, evaluatedAt)
+      .evaluations.find((item) => item.ruleId === 'R020')?.status,
+    'INSUFFICIENT_EVIDENCE',
+  );
+});
+
+void test('R004 and R041 remain distinct findings for their shared state predicate', () => {
+  const result = new InvestigationEngine().evaluate(
+    {
+      ...evidence({ status: 'FAILED' }),
+      order: { orderId: 'ORD-20001', status: 'PAID', amount: '1000.00', currency: 'INR' },
+    },
+    evaluatedAt,
+  );
+  assert.equal(result.findings.find((item) => item.ruleId === 'R004')?.severity, 'CRITICAL');
+  assert.equal(result.findings.find((item) => item.ruleId === 'R041')?.severity, 'CRITICAL');
+  assert.notEqual(
+    result.findings.find((item) => item.ruleId === 'R004')?.explanation,
+    result.findings.find((item) => item.ruleId === 'R041')?.explanation,
+  );
+  const cancelled = new InvestigationEngine().evaluate(
+    {
+      ...evidence({ status: 'CANCELLED' }),
+      order: { orderId: 'ORD-20001', status: 'PAID', amount: '1000.00', currency: 'INR' },
+    },
+    evaluatedAt,
+  );
+  assert.equal(
+    cancelled.findings.some((item) => item.ruleId === 'R041'),
+    false,
+  );
+  assert.equal(cancelled.findings.find((item) => item.ruleId === 'R004')?.severity, 'CRITICAL');
 });
 
 void test('threshold boundary is inclusive and below-threshold data does not match', () => {

@@ -61,6 +61,7 @@ export const investigationEvidenceSchema = z.object({
       status: z.enum(['PENDING', 'SETTLED', 'FAILED']),
       amount: z.string().regex(/^\d+(\.\d{1,2})?$/),
       currency: z.string().min(1).max(10),
+      settledAt: z.iso.datetime({ offset: true }).nullable(),
     })
     .nullable()
     .default(null),
@@ -92,7 +93,7 @@ export type InvestigationRuleEvaluation = {
 export type InvestigationFinding = {
   ruleId: string;
   ruleVersion: string;
-  severity: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  severity: 'INFO' | 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
   explanation: string;
   evidenceReferences: string[];
 };

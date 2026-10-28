@@ -145,7 +145,8 @@ The authenticated PostgreSQL integration flow now verifies:
 - Existing event IDs with conflicting payloads are rejected.
 - Successful order and webhook commits invalidate the shared payment-status cache after commit.
 - The investigation created after ingestion reflects available order and webhook evidence and
-  returns `COMPLETED`; missing-source cases remain truthfully `PARTIAL`.
+  returns `PARTIAL` when any rule lacks required evidence; complete evidence returns
+  `COMPLETED`.
 
 Ledger, settlement, and external provider ingestion are still not implemented.
 
@@ -217,16 +218,28 @@ provider value can be reconstructed for existing records.
 
 `RULE_COVERAGE_AUDIT.md` compares every specification rule R001-R063 with the actual
 `InvestigationEngine`, normalized evidence schema, PostgreSQL source query, migrations, and
-tests. It identifies four directly verified rules (R001, R005, R012, and R060), coded but
-under-tested rules, the R020/R021/R039/R041 identifier mismatch, evidence-query gaps, and rules
-that require absent authoritative fields or external state. This audit does not claim full
-63-rule coverage.
+tests. It identifies directly verified rules, coded but under-tested rules, evidence-query gaps,
+and rules that require absent authoritative fields or external state. This audit does not claim
+full 63-rule coverage.
+
+The rule-identity correction phase verifies that R020 is the late-webhook/settled-settlement
+timing rule, R021 is the successful-payment-without-ledger rule, R039 requires an unprocessed
+webhook in addition to the pending order/no-ledger state, and R041 remains a distinct critical
+cross-domain finding from R004. No AI call was added; the specification's R041 AI flag remains a
+future synthesis concern outside the deterministic engine.
 
 ## Cache correctness and concurrency verification — 2026-10-28
 
 `npm run check` passed:
 
-- Formatting, ESLint with zero warnings, strict TypeScript, 17 unit tests, and production build.
+- Formatting, ESLint with zero warnings, strict TypeScript, 24 unit tests, and production build.
+
+`npm run test:integration` passed:
+
+- 3 PostgreSQL integration tests passed, including tenant isolation and persisted partial
+  investigation status when R020/R039 lack required evidence.
+
+`npm audit --omit=dev` passed with 0 vulnerabilities.
 
 Cache tests verified:
 

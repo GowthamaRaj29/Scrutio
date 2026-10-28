@@ -28,6 +28,10 @@ function moneyEquals(left: string, right: string): boolean {
   return Number(left) === Number(right);
 }
 
+function timestampOrNull(value: unknown): string | null {
+  return typeof value === 'string' ? value : null;
+}
+
 function evaluateRule(
   ruleId: string,
   status: InvestigationRuleEvaluation['status'],
@@ -70,6 +74,13 @@ export class InvestigationEngine {
     evaluatedAt: string,
   ): InvestigationRuleEvaluation[] {
     const { payment, order, webhook } = evidence;
+    const settlementTimestamp = timestampOrNull(evidence.settlement?.settledAt);
+    const lateSettlementWebhook =
+      webhook !== null &&
+      settlementTimestamp !== null &&
+      evidence.settlement !== null &&
+      evidence.settlement.status === 'SETTLED' &&
+      Date.parse(webhook.receivedAt) > Date.parse(settlementTimestamp);
     const evaluations: InvestigationRuleEvaluation[] = [];
 
     evaluations.push(
@@ -117,15 +128,16 @@ export class InvestigationEngine {
       ),
       evaluateRule(
         'R004',
-        payment.status === 'FAILED' && order?.status === 'PAID'
+        (payment.status === 'FAILED' || payment.status === 'CANCELLED') && order?.status === 'PAID'
           ? 'MATCH'
           : order === null
             ? 'INSUFFICIENT_EVIDENCE'
             : 'NO_MATCH',
         order === null
           ? 'Order evidence is unavailable; payment/order state cannot be compared.'
-          : payment.status === 'FAILED' && order.status === 'PAID'
-            ? 'Order is paid while the payment is failed.'
+          : (payment.status === 'FAILED' || payment.status === 'CANCELLED') &&
+              order.status === 'PAID'
+            ? 'Order is paid while the payment is failed or cancelled.'
             : 'Payment and order state do not match the R004 condition.',
         ['payment.status', 'order.status'],
       ),
@@ -219,27 +231,68 @@ export class InvestigationEngine {
       ),
       evaluateRule(
         'R020',
-        payment.status === 'SUCCESS' && !payment.ledgerEntryPresent ? 'MATCH' : 'NO_MATCH',
-        payment.status === 'SUCCESS' && !payment.ledgerEntryPresent
-          ? 'Successful payment has no matching ledger entry.'
-          : 'Payment ledger presence does not match the R020 condition.',
-        ['payment.status', 'payment.ledgerEntryPresent'],
+        webhook === null || evidence.settlement === null || settlementTimestamp === null
+          ? 'INSUFFICIENT_EVIDENCE'
+          : lateSettlementWebhook
+            ? 'MATCH'
+            : 'NO_MATCH',
+        webhook === null || evidence.settlement === null || settlementTimestamp === null
+          ? 'Webhook or settled-settlement timing evidence is unavailable.'
+          : lateSettlementWebhook
+            ? 'Webhook was received after the payment settlement was marked settled.'
+            : 'Webhook receipt did not occur after a settled settlement.',
+        ['webhook.receivedAt', 'settlement.settledAt', 'settlement.status'],
       ),
       evaluateRule(
         'R021',
-        payment.status === 'SUCCESS' && order?.status === 'PENDING' && !payment.ledgerEntryPresent
-          ? 'MATCH'
-          : order === null
-            ? 'INSUFFICIENT_EVIDENCE'
-            : 'NO_MATCH',
-        order === null
-          ? 'Order evidence is unavailable; full payment pipeline stall cannot be evaluated.'
+        payment.status === 'SUCCESS' && !payment.ledgerEntryPresent ? 'MATCH' : 'NO_MATCH',
+        payment.status === 'SUCCESS' && !payment.ledgerEntryPresent
+          ? 'Successful payment has no matching ledger entry.'
+          : 'Payment ledger presence does not match the R021 condition.',
+        ['payment.status', 'payment.ledgerEntryPresent'],
+      ),
+      evaluateRule(
+        'R039',
+        webhook === null
+          ? 'INSUFFICIENT_EVIDENCE'
+          : payment.status === 'SUCCESS' &&
+              order?.status === 'PENDING' &&
+              webhook.processingStatus !== 'PROCESSED' &&
+              !payment.ledgerEntryPresent
+            ? 'MATCH'
+            : order === null
+              ? 'INSUFFICIENT_EVIDENCE'
+              : 'NO_MATCH',
+        webhook === null || order === null
+          ? 'Order or webhook evidence is unavailable; full pipeline stall cannot be evaluated.'
           : payment.status === 'SUCCESS' &&
               order.status === 'PENDING' &&
+              webhook.processingStatus !== 'PROCESSED' &&
               !payment.ledgerEntryPresent
-            ? 'Successful payment is pending at the order and has no ledger entry.'
-            : 'Payment pipeline stall condition is not present.',
-        ['payment.status', 'payment.ledgerEntryPresent', 'order.status'],
+            ? 'Successful payment has a pending order, an unprocessed webhook, and no ledger entry.'
+            : 'Full pipeline stall condition is not present.',
+        [
+          'payment.status',
+          'order.status',
+          'webhook.processingStatus',
+          'payment.ledgerEntryPresent',
+        ],
+      ),
+      evaluateRule(
+        'R041',
+        payment.status === 'FAILED'
+          ? order === null
+            ? 'INSUFFICIENT_EVIDENCE'
+            : order.status === 'PAID'
+              ? 'MATCH'
+              : 'NO_MATCH'
+          : 'NO_MATCH',
+        order === null
+          ? 'Order evidence is unavailable; impossible paid-order state cannot be evaluated.'
+          : payment.status === 'FAILED' && order.status === 'PAID'
+            ? 'Order is marked paid while the payment is failed.'
+            : 'Payment and order state do not match the R041 condition.',
+        ['payment.status', 'order.status'],
       ),
       evaluateRule(
         'R060',
@@ -263,8 +316,8 @@ export class InvestigationEngine {
   }
 
   private toFinding(evaluation: InvestigationRuleEvaluation): InvestigationFinding {
-    const criticalRules = new Set(['R012', 'R021', 'R060']);
-    const highRules = new Set(['R001', 'R002', 'R003', 'R004', 'R020']);
+    const criticalRules = new Set(['R004', 'R012', 'R021', 'R039', 'R041', 'R060']);
+    const highRules = new Set(['R001', 'R002', 'R003']);
     return {
       ruleId: evaluation.ruleId,
       ruleVersion: evaluation.version,
@@ -272,7 +325,9 @@ export class InvestigationEngine {
         ? 'CRITICAL'
         : highRules.has(evaluation.ruleId)
           ? 'HIGH'
-          : 'MEDIUM',
+          : evaluation.ruleId === 'R020'
+            ? 'INFO'
+            : 'MEDIUM',
       explanation: evaluation.explanation,
       evidenceReferences: evaluation.evidenceReferences,
     };

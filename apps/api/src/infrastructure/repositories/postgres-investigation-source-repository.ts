@@ -34,6 +34,7 @@ type SourceRow = {
   settlement_status: 'PENDING' | 'SETTLED' | 'FAILED' | null;
   settlement_amount: string | null;
   settlement_currency: string | null;
+  settlement_settled_at: Date | null;
   provider_name: string | null;
   provider_event_id: string | null;
   provider_reference_id: string | null;
@@ -65,6 +66,7 @@ export class InvestigationSourceRepository {
               l.currency AS ledger_currency, l.status AS ledger_status,
               s.settlement_id, s.status AS settlement_status,
               s.amount::text AS settlement_amount, s.currency AS settlement_currency,
+              s.settled_at AS settlement_settled_at,
               pe.provider AS provider_name, pe.provider_event_id,
               pe.provider_reference_id, pe.observed_status AS provider_observed_status,
               pe.observed_at AS provider_observed_at,
@@ -87,7 +89,7 @@ export class InvestigationSourceRepository {
             LIMIT 1
          ) l ON true
          LEFT JOIN LATERAL (
-           SELECT s.settlement_id, s.status, s.amount, s.currency
+           SELECT s.settlement_id, s.status, s.amount, s.currency, s.settled_at
              FROM settlements s
              JOIN settlement_payments sp
                ON sp.organization_id = s.organization_id
@@ -179,6 +181,8 @@ export class InvestigationSourceRepository {
               status: row.settlement_status,
               amount: row.settlement_amount,
               currency: row.settlement_currency,
+              settledAt:
+                row.settlement_settled_at === null ? null : row.settlement_settled_at.toISOString(),
             },
       providerHistory:
         row.provider_name === null ||
