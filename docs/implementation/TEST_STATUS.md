@@ -213,6 +213,15 @@ The R060 implementation is verified against the authoritative specification:
 The migration leaves provider metadata nullable for legacy payment rows because no authoritative
 provider value can be reconstructed for existing records.
 
+## Detection-rule coverage audit — 2026-10-28
+
+`RULE_COVERAGE_AUDIT.md` compares every specification rule R001-R063 with the actual
+`InvestigationEngine`, normalized evidence schema, PostgreSQL source query, migrations, and
+tests. It identifies four directly verified rules (R001, R005, R012, and R060), coded but
+under-tested rules, the R020/R021/R039/R041 identifier mismatch, evidence-query gaps, and rules
+that require absent authoritative fields or external state. This audit does not claim full
+63-rule coverage.
+
 ## Cache correctness and concurrency verification — 2026-10-28
 
 `npm run check` passed:
