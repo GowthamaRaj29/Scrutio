@@ -3,6 +3,8 @@ import { z } from 'zod';
 export const investigationPaymentSchema = z.object({
   organizationId: z.uuid(),
   paymentId: z.string().min(1).max(100),
+  provider: z.string().min(1).max(100).nullable().default(null),
+  providerReferenceId: z.string().min(1).max(255).nullable().default(null),
   status: z.enum([
     'INITIATED',
     'PENDING',
@@ -72,6 +74,7 @@ export const investigationEvidenceSchema = z.object({
     })
     .nullable()
     .default(null),
+  duplicateProviderPaymentIds: z.array(z.string().min(1).max(100)).default([]),
 });
 
 export type InvestigationEvidence = z.infer<typeof investigationEvidenceSchema>;

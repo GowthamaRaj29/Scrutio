@@ -1,6 +1,7 @@
 import type {
   LedgerEntryIngestion,
   OrderIngestion,
+  PaymentProviderReferenceIngestion,
   ProviderPaymentEventIngestion,
   SettlementIngestion,
   WebhookIngestion,
@@ -270,6 +271,7 @@ export class IngestionService {
         if (result.rowCount === 1) {
           return true;
         }
+
         const existing = await client.query<{
           payment_id: string;
           provider: string;
@@ -306,6 +308,49 @@ export class IngestionService {
       return created;
     } catch (error: unknown) {
       throw error;
+    }
+  }
+
+  public async setPaymentProviderReference(
+    organizationId: string,
+    paymentId: string,
+    input: PaymentProviderReferenceIngestion,
+  ): Promise<void> {
+    const updated = await this.database.withTransaction(organizationId, async (client) => {
+      const existing = await client.query<{
+        provider: string | null;
+        provider_reference_id: string | null;
+      }>(
+        `SELECT provider, provider_reference_id
+           FROM payments
+          WHERE organization_id = $1 AND payment_id = $2
+          FOR UPDATE`,
+        [organizationId, paymentId],
+      );
+      const row = existing.rows[0];
+      if (row === undefined) {
+        throw new IngestionConflictError('Payment not found');
+      }
+      if (row.provider !== null || row.provider_reference_id !== null) {
+        if (
+          row.provider === input.provider &&
+          row.provider_reference_id === input.providerReferenceId
+        ) {
+          return false;
+        }
+        throw new IngestionConflictError('Payment provider reference cannot be overwritten');
+      }
+      await client.query(
+        `UPDATE payments
+            SET provider = $1, provider_reference_id = $2, version = version + 1,
+                updated_at = NOW()
+          WHERE organization_id = $3 AND payment_id = $4`,
+        [input.provider, input.providerReferenceId, organizationId, paymentId],
+      );
+      return true;
+    });
+    if (updated) {
+      this.paymentStatusService.invalidateAfterMutation(organizationId, paymentId);
     }
   }
 

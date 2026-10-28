@@ -194,8 +194,24 @@ The PostgreSQL integration flow verifies:
 - Provider-event writes invalidate the payment-status cache only after commit.
 
 No external provider calls, polling worker, raw provider payload storage, or AI processing were
-introduced. The existing specification's R060 duplicate `provider_reference_id` rule remains
-blocked because the current payment schema does not yet store that field on payments.
+introduced. Provider history remains observed source data; R060 uses authoritative payment
+references rather than copying references from provider-event history.
+
+## R060 verification — 2026-10-28
+
+The R060 implementation is verified against the authoritative specification:
+
+- The trigger is `COUNT(DISTINCT payments WHERE provider_reference_id = R) > 1`.
+- Comparison is scoped to the organization; provider names do not partition references.
+- Missing references produce `INSUFFICIENT_EVIDENCE`, not a finding.
+- Unique references produce `NO_MATCH`.
+- Duplicate references produce a deterministic CRITICAL finding with stable payment evidence IDs.
+- Payment references are persisted through an authenticated tenant-scoped path and cannot be overwritten.
+- Live PostgreSQL tests verify migration compatibility, RLS/tenant ownership, duplicate references,
+  different providers sharing a reference, and investigation result evidence.
+
+The migration leaves provider metadata nullable for legacy payment rows because no authoritative
+provider value can be reconstructed for existing records.
 
 ## Cache correctness and concurrency verification — 2026-10-28
 

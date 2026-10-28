@@ -85,6 +85,17 @@ settlement currency. Because the current schema has no allocation amount or reco
 field, this endpoint records observed provider relationships and does not claim financial
 reconciliation.
 
+Authoritative payment provider references can be assigned once through:
+
+```text
+POST /api/v1/organizations/:organizationId/payments/:paymentId/provider-reference
+```
+
+The payload contains `provider` and `providerReferenceId`. R060 evaluates authoritative payment
+records within the organization and reports a CRITICAL finding when the same reference is used by
+more than one payment, including across different provider names. References are not globally
+unique because duplicate references are the security condition being investigated.
+
 Provider payment events can be recorded through:
 
 ```text

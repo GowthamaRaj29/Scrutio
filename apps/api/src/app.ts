@@ -3,6 +3,7 @@ import { z } from 'zod';
 import {
   ledgerEntryIngestionSchema,
   orderIngestionSchema,
+  paymentProviderReferenceIngestionSchema,
   providerPaymentEventIngestionSchema,
   settlementIngestionSchema,
   webhookIngestionSchema,
@@ -98,6 +99,40 @@ export function createApp(dependencies: AppDependencies): express.Express {
       response.status(500).json({ error: 'Internal server error' });
     }
   });
+
+  app.post(
+    '/api/v1/organizations/:organizationId/payments/:paymentId/provider-reference',
+    requireAuthentication(authService),
+    async (request: Request, response: Response): Promise<void> => {
+      const path = paymentPathSchema.safeParse(request.params);
+      const body = paymentProviderReferenceIngestionSchema.safeParse(request.body);
+      const user = request.authenticatedUser;
+      if (!path.success || !body.success) {
+        response.status(400).json({ error: 'Invalid payment provider reference request' });
+        return;
+      }
+      if (user === undefined || user.organizationId !== path.data.organizationId) {
+        response.status(403).json({ error: 'Forbidden' });
+        return;
+      }
+      try {
+        await ingestionService.setPaymentProviderReference(
+          user.organizationId,
+          path.data.paymentId,
+          body.data,
+        );
+        response.status(202).json({ status: 'accepted' });
+      } catch (error: unknown) {
+        if (error instanceof IngestionConflictError) {
+          response.status(error.message === 'Payment not found' ? 404 : 409).json({
+            error: error.message,
+          });
+          return;
+        }
+        response.status(500).json({ error: 'Payment provider reference update failed' });
+      }
+    },
+  );
 
   app.post(
     '/api/v1/organizations/:organizationId/provider/payment-events',

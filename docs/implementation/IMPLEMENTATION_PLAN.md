@@ -1,6 +1,6 @@
 # Implementation plan
 
-## Current phase: Provider payment history ingestion
+## Current phase: R060 duplicate provider-reference detection
 
 1. Establish reproducible package, TypeScript, lint, formatting, and test tooling. **Complete.**
 2. Verify the baseline with `npm run check`. **Complete.**
@@ -13,9 +13,10 @@
 9. Add tenant-authenticated, idempotent order and webhook ingestion. **Complete for the currently supported order/webhook slice; ledger, settlement, and provider ingestion remain next.**
 10. Add tenant-authenticated ledger entry ingestion with exact-decimal balance validation and source-event idempotency. **Complete for the existing ledger schema; settlement and richer reversal semantics remain next.**
 11. Add tenant-authenticated settlement ingestion and payment-to-settlement relationship capture. **Complete for the schema-supported observed-link slice; allocation and reconciliation status remain blocked by missing schema semantics.**
-12. Add tenant-authenticated provider payment-event ingestion and load the latest observed event into investigation evidence. **Complete for the observed-event slice; provider polling and duplicate-reference rule evaluation remain next.**
-13. Add optional `@google/genai` integration only for Tier 3 synthesis, with strict schema/evidence validation.
-14. Add React web application and end-to-end workflows.
-15. Add CI gates, security scanning, migration verification, and performance measurements.
+12. Add tenant-authenticated provider payment-event ingestion and load the latest observed event into investigation evidence. **Complete for the observed-event slice.**
+13. Implement R060 duplicate provider-reference detection from authoritative payment records. **Complete; provider references are forward-migrated, tenant-scoped, non-overwritable, and evaluated deterministically.**
+14. Add optional `@google/genai` integration only for Tier 3 synthesis, with strict schema/evidence validation.
+15. Add React web application and end-to-end workflows.
+16. Add CI gates, security scanning, migration verification, and performance measurements.
 
 No phase is complete until its feature evidence is recorded in `FEATURE_EVIDENCE.md`.

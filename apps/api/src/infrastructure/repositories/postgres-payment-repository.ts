@@ -4,6 +4,8 @@ import type { PaymentRecord, PaymentRepository } from '../../domain/payments.js'
 type PaymentRow = {
   organization_id: string;
   payment_id: string;
+  provider: string | null;
+  provider_reference_id: string | null;
   status: PaymentRecord['status'];
   amount: string;
   currency: string;
@@ -22,7 +24,8 @@ export class PostgresPaymentRepository implements PaymentRepository {
     paymentId: string,
   ): Promise<PaymentRecord | null> {
     const result = await this.database.query<PaymentRow>(
-      `SELECT organization_id, payment_id, status, amount::text, currency,
+      `SELECT organization_id, payment_id, provider, provider_reference_id,
+              status, amount::text, currency,
               order_status, webhook_processed, ledger_entry_present, updated_at, version
          FROM payments
         WHERE organization_id = $1 AND payment_id = $2`,
@@ -35,6 +38,8 @@ export class PostgresPaymentRepository implements PaymentRepository {
     return {
       organizationId: row.organization_id,
       paymentId: row.payment_id,
+      provider: row.provider,
+      providerReferenceId: row.provider_reference_id,
       status: row.status,
       amount: row.amount,
       currency: row.currency,

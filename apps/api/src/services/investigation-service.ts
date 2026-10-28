@@ -66,13 +66,15 @@ export class InvestigationService {
                 : reference.startsWith('ledger.')
                   ? 'ledger'
                   : 'payment',
-            reference.startsWith('webhook.') && evidence.webhook !== null
-              ? evidence.webhook.eventId
-              : reference.startsWith('order.') && evidence.order !== null
-                ? evidence.order.orderId
-                : reference.startsWith('ledger.') && evidence.ledger !== null
-                  ? evidence.ledger.entryId
-                  : evidence.payment.paymentId,
+            reference.startsWith('payment.duplicate.')
+              ? reference.slice('payment.duplicate.'.length)
+              : reference.startsWith('webhook.') && evidence.webhook !== null
+                ? evidence.webhook.eventId
+                : reference.startsWith('order.') && evidence.order !== null
+                  ? evidence.order.orderId
+                  : reference.startsWith('ledger.') && evidence.ledger !== null
+                    ? evidence.ledger.entryId
+                    : evidence.payment.paymentId,
             reference,
           );
         }

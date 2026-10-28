@@ -33,3 +33,5 @@ rule is marked operational because the current rule engine has no provider-histo
 complete semantics. R060 remains blocked until `provider_reference_id` is represented on payment
 records and duplicate-reference evaluation is implemented and tested. Customer/payment-method
 aggregates and pattern windows still require source semantics and repository work.
+
+| SC-57 | R060 | Two payment records share `provider_reference_id` | CRITICAL duplicate-reference finding | Engine unit test and PostgreSQL API integration | PASS |

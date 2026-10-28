@@ -241,12 +241,29 @@ export class InvestigationEngine {
             : 'Payment pipeline stall condition is not present.',
         ['payment.status', 'payment.ledgerEntryPresent', 'order.status'],
       ),
+      evaluateRule(
+        'R060',
+        payment.providerReferenceId === null
+          ? 'INSUFFICIENT_EVIDENCE'
+          : evidence.duplicateProviderPaymentIds.length > 0
+            ? 'MATCH'
+            : 'NO_MATCH',
+        payment.providerReferenceId === null
+          ? 'Provider reference evidence is unavailable; duplicate provider references cannot be evaluated.'
+          : evidence.duplicateProviderPaymentIds.length > 0
+            ? `Provider reference ${payment.providerReferenceId} is used by multiple payment records in this organization.`
+            : 'Provider reference is unique within this organization.',
+        [
+          'payment.providerReferenceId',
+          ...evidence.duplicateProviderPaymentIds.map((id) => `payment.duplicate.${id}`),
+        ],
+      ),
     );
     return evaluations.sort((left, right) => left.ruleId.localeCompare(right.ruleId));
   }
 
   private toFinding(evaluation: InvestigationRuleEvaluation): InvestigationFinding {
-    const criticalRules = new Set(['R012', 'R021']);
+    const criticalRules = new Set(['R012', 'R021', 'R060']);
     const highRules = new Set(['R001', 'R002', 'R003', 'R004', 'R020']);
     return {
       ruleId: evaluation.ruleId,

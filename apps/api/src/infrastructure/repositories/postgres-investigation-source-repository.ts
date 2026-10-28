@@ -7,6 +7,8 @@ import type { Queryable } from '../postgres/database.js';
 type SourceRow = {
   organization_id: string;
   payment_id: string;
+  payment_provider: string | null;
+  payment_provider_reference_id: string | null;
   payment_status: InvestigationEvidence['payment']['status'];
   amount: string;
   currency: string;
@@ -37,6 +39,7 @@ type SourceRow = {
   provider_reference_id: string | null;
   provider_observed_status: string | null;
   provider_observed_at: Date | null;
+  duplicate_provider_payment_ids: string[];
 };
 
 export class InvestigationSourceRepository {
@@ -47,7 +50,9 @@ export class InvestigationSourceRepository {
     paymentId: string,
   ): Promise<InvestigationEvidence | null> {
     const result = await this.database.query<SourceRow>(
-      `SELECT p.organization_id, p.payment_id, p.status AS payment_status,
+      `SELECT p.organization_id, p.payment_id, p.provider AS payment_provider,
+              p.provider_reference_id AS payment_provider_reference_id,
+              p.status AS payment_status,
               p.amount::text, p.currency, p.order_status, p.webhook_processed,
               p.ledger_entry_present, p.version, p.updated_at AS payment_updated_at,
               o.order_id, o.status AS actual_order_status,
@@ -62,7 +67,8 @@ export class InvestigationSourceRepository {
               s.amount::text AS settlement_amount, s.currency AS settlement_currency,
               pe.provider AS provider_name, pe.provider_event_id,
               pe.provider_reference_id, pe.observed_status AS provider_observed_status,
-              pe.observed_at AS provider_observed_at
+              pe.observed_at AS provider_observed_at,
+              COALESCE(duplicates.payment_ids, ARRAY[]::varchar[]) AS duplicate_provider_payment_ids
          FROM payments p
          LEFT JOIN orders o
            ON o.organization_id = p.organization_id AND o.order_id = p.order_id
@@ -98,6 +104,14 @@ export class InvestigationSourceRepository {
              ORDER BY observed_at DESC
              LIMIT 1
           ) pe ON true
+         LEFT JOIN LATERAL (
+           SELECT ARRAY_AGG(duplicate.payment_id ORDER BY duplicate.payment_id) AS payment_ids
+             FROM payments duplicate
+            WHERE duplicate.organization_id = p.organization_id
+              AND p.provider_reference_id IS NOT NULL
+              AND duplicate.provider_reference_id = p.provider_reference_id
+              AND duplicate.payment_id <> p.payment_id
+         ) duplicates ON true
         WHERE p.organization_id = $1 AND p.payment_id = $2`,
       [organizationId, paymentId],
     );
@@ -109,6 +123,8 @@ export class InvestigationSourceRepository {
       payment: {
         organizationId: row.organization_id,
         paymentId: row.payment_id,
+        provider: row.payment_provider,
+        providerReferenceId: row.payment_provider_reference_id,
         status: row.payment_status,
         amount: row.amount,
         currency: row.currency,
@@ -177,6 +193,7 @@ export class InvestigationSourceRepository {
               observedStatus: row.provider_observed_status,
               observedAt: row.provider_observed_at.toISOString(),
             },
+      duplicateProviderPaymentIds: row.duplicate_provider_payment_ids,
     });
   }
 }

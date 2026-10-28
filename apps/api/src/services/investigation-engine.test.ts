@@ -12,6 +12,8 @@ function evidence(
     payment: {
       organizationId: '11111111-1111-4111-8111-111111111111',
       paymentId: 'PAY-10001',
+      provider: null,
+      providerReferenceId: null,
       status: 'SUCCESS',
       amount: '1000.00',
       currency: 'INR',
@@ -32,6 +34,7 @@ function evidence(
     ledger: null,
     settlement: null,
     providerHistory: null,
+    duplicateProviderPaymentIds: [],
   };
 }
 
@@ -109,4 +112,42 @@ void test('invalid amounts and timestamps are rejected at the boundary', () => {
   assert.throws(() =>
     normalizeInvestigationEvidence(evidence({ updatedAt: '2026-10-28 12:00:00' })),
   );
+});
+
+void test('R060 detects duplicate provider references with critical severity', () => {
+  const result = new InvestigationEngine().evaluate(
+    {
+      ...evidence(),
+      payment: {
+        ...evidence().payment,
+        provider: 'provider-a',
+        providerReferenceId: 'REF-001',
+      },
+      duplicateProviderPaymentIds: ['PAY-10002'],
+    },
+    evaluatedAt,
+  );
+  const finding = result.findings.find((item) => item.ruleId === 'R060');
+  assert.ok(finding);
+  assert.equal(finding.severity, 'CRITICAL');
+  assert.deepEqual(finding.evidenceReferences, [
+    'payment.duplicate.PAY-10002',
+    'payment.providerReferenceId',
+  ]);
+});
+
+void test('R060 distinguishes missing and unique provider references', () => {
+  const missing = new InvestigationEngine().evaluate(evidence(), evaluatedAt);
+  assert.equal(
+    missing.evaluations.find((item) => item.ruleId === 'R060')?.status,
+    'INSUFFICIENT_EVIDENCE',
+  );
+  const unique = new InvestigationEngine().evaluate(
+    {
+      ...evidence(),
+      payment: { ...evidence().payment, providerReferenceId: 'REF-UNIQUE' },
+    },
+    evaluatedAt,
+  );
+  assert.equal(unique.evaluations.find((item) => item.ruleId === 'R060')?.status, 'NO_MATCH');
 });

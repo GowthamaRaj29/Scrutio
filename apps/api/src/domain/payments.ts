@@ -17,6 +17,8 @@ export type PaymentStatus = (typeof paymentStatuses)[number];
 export type PaymentRecord = {
   organizationId: string;
   paymentId: string;
+  provider?: string | null;
+  providerReferenceId?: string | null;
   status: PaymentStatus;
   amount: string;
   currency: string;

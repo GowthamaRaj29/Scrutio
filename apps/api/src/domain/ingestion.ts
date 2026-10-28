@@ -75,3 +75,12 @@ export const providerPaymentEventIngestionSchema = z.object({
 });
 
 export type ProviderPaymentEventIngestion = z.infer<typeof providerPaymentEventIngestionSchema>;
+
+export const paymentProviderReferenceIngestionSchema = z.object({
+  provider: z.string().min(1).max(100),
+  providerReferenceId: z.string().min(1).max(255),
+});
+
+export type PaymentProviderReferenceIngestion = z.infer<
+  typeof paymentProviderReferenceIngestionSchema
+>;

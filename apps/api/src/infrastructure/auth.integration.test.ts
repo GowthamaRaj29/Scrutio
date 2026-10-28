@@ -27,6 +27,7 @@ void test('PostgreSQL authentication sessions are tenant-scoped and revocable', 
   const organizationId = randomUUID();
   const otherOrganizationId = randomUUID();
   const userId = randomUUID();
+  const otherUserId = randomUUID();
   const email = `auth-${userId}@example.test`;
   const password = 'correct horse battery staple';
   try {
@@ -42,9 +43,18 @@ void test('PostgreSQL authentication sessions are tenant-scoped and revocable', 
       passwordHash,
     ]);
     await adminDatabase.query(
+      `INSERT INTO users (id, email, password_hash) VALUES ($1, $2, 'test-hash')`,
+      [otherUserId, `other-${otherUserId}@example.test`],
+    );
+    await adminDatabase.query(
       `INSERT INTO organization_memberships (user_id, organization_id, role)
        VALUES ($1, $2, 'analyst')`,
       [userId, organizationId],
+    );
+    await adminDatabase.query(
+      `INSERT INTO organization_memberships (user_id, organization_id, role)
+       VALUES ($1, $2, 'analyst')`,
+      [otherUserId, otherOrganizationId],
     );
 
     const authService = new AuthService(appDatabase);
@@ -73,8 +83,10 @@ void test('PostgreSQL authentication sessions are tenant-scoped and revocable', 
       `INSERT INTO payments
          (organization_id, payment_id, amount, status, order_status,
           webhook_processed, ledger_entry_present)
-       VALUES ($1, 'AUTH-PAYMENT-001', 10.00, 'SUCCESS', 'PAID', true, true)`,
-      [organizationId],
+       VALUES ($1, 'AUTH-PAYMENT-001', 10.00, 'SUCCESS', 'PAID', true, true),
+              ($1, 'AUTH-PAYMENT-002', 20.00, 'SUCCESS', 'PAID', true, true),
+              ($2, 'AUTH-PAYMENT-OTHER', 20.00, 'SUCCESS', 'PAID', true, true)`,
+      [organizationId, otherOrganizationId],
     );
     const accountResult = await adminDatabase.query<{ id: string }>(
       `INSERT INTO ledger_accounts (organization_id, account_code, account_type)
@@ -124,6 +136,38 @@ void test('PostgreSQL authentication sessions are tenant-scoped and revocable', 
       assert.equal(loginResponse.status, 200);
       const cookie = loginResponse.headers.get('set-cookie')?.split(';')[0];
       assert.ok(cookie);
+
+      const providerReferencePayload = {
+        provider: 'test-provider',
+        providerReferenceId: 'AUTH-DUPLICATE-REF-001',
+      };
+      const providerReferenceResponse = await fetch(
+        `${baseUrl}/api/v1/organizations/${organizationId}/payments/AUTH-PAYMENT-001/provider-reference`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', cookie },
+          body: JSON.stringify(providerReferencePayload),
+        },
+      );
+      assert.equal(providerReferenceResponse.status, 202);
+      const duplicateReferenceResponse = await fetch(
+        `${baseUrl}/api/v1/organizations/${organizationId}/payments/AUTH-PAYMENT-002/provider-reference`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', cookie },
+          body: JSON.stringify({ ...providerReferencePayload, provider: 'other-provider' }),
+        },
+      );
+      assert.equal(duplicateReferenceResponse.status, 202);
+      const overwriteReferenceResponse = await fetch(
+        `${baseUrl}/api/v1/organizations/${organizationId}/payments/AUTH-PAYMENT-001/provider-reference`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', cookie },
+          body: JSON.stringify({ ...providerReferencePayload, providerReferenceId: 'OTHER' }),
+        },
+      );
+      assert.equal(overwriteReferenceResponse.status, 409);
 
       const paymentResponse = await fetch(
         `${baseUrl}/api/v1/organizations/${organizationId}/payments/AUTH-PAYMENT-001/status`,
@@ -327,8 +371,53 @@ void test('PostgreSQL authentication sessions are tenant-scoped and revocable', 
         },
       );
       assert.equal(investigationResponse.status, 201);
-      const investigation = (await investigationResponse.json()) as { id: string; status: string };
+      const investigation = (await investigationResponse.json()) as {
+        id: string;
+        status: string;
+        result: {
+          findings: Array<{
+            ruleId: string;
+            severity: string;
+            evidenceReferences: string[];
+          }>;
+        };
+      };
       assert.equal(investigation.status, 'COMPLETED');
+      const duplicateReferenceFinding = investigation.result.findings.find(
+        (finding) => finding.ruleId === 'R060',
+      );
+      assert.ok(duplicateReferenceFinding);
+      assert.equal(duplicateReferenceFinding.severity, 'CRITICAL');
+      assert.deepEqual(duplicateReferenceFinding.evidenceReferences, [
+        'payment.duplicate.AUTH-PAYMENT-002',
+        'payment.providerReferenceId',
+      ]);
+      await adminDatabase.query(
+        `UPDATE payments
+            SET provider = 'other-tenant-provider', provider_reference_id = $1
+          WHERE organization_id = $2 AND payment_id = 'AUTH-PAYMENT-OTHER'`,
+        ['AUTH-DUPLICATE-REF-001', otherOrganizationId],
+      );
+      const otherTenantInvestigation = await new InvestigationService(appDatabase).execute(
+        otherOrganizationId,
+        otherUserId,
+        'AUTH-PAYMENT-OTHER',
+        '2026-10-28T12:00:00.000Z',
+      );
+      const otherResult = otherTenantInvestigation.result;
+      assert.ok(typeof otherResult === 'object' && otherResult !== null);
+      assert.ok('findings' in otherResult);
+      assert.ok(Array.isArray(otherResult.findings));
+      assert.equal(
+        otherResult.findings.some(
+          (finding) =>
+            typeof finding === 'object' &&
+            finding !== null &&
+            'ruleId' in finding &&
+            (finding as Record<string, unknown>).ruleId === 'R060',
+        ),
+        false,
+      );
 
       const retrievedInvestigation = await fetch(
         `${baseUrl}/api/v1/organizations/${organizationId}/investigations/${investigation.id}`,
@@ -371,8 +460,9 @@ void test('PostgreSQL authentication sessions are tenant-scoped and revocable', 
     await adminDatabase.query('DELETE FROM webhook_events WHERE organization_id = $1', [
       organizationId,
     ]);
-    await adminDatabase.query('DELETE FROM investigations WHERE organization_id = $1', [
+    await adminDatabase.query('DELETE FROM investigations WHERE organization_id IN ($1, $2)', [
       organizationId,
+      otherOrganizationId,
     ]);
     await adminDatabase.query('DELETE FROM journal_lines WHERE organization_id = $1', [
       organizationId,
@@ -392,9 +482,15 @@ void test('PostgreSQL authentication sessions are tenant-scoped and revocable', 
     await adminDatabase.query('DELETE FROM ledger_accounts WHERE organization_id = $1', [
       organizationId,
     ]);
-    await adminDatabase.query('DELETE FROM payments WHERE organization_id = $1', [organizationId]);
-    await adminDatabase.query('DELETE FROM orders WHERE organization_id = $1', [organizationId]);
-    await adminDatabase.query('DELETE FROM users WHERE id = $1', [userId]);
+    await adminDatabase.query('DELETE FROM payments WHERE organization_id IN ($1, $2)', [
+      organizationId,
+      otherOrganizationId,
+    ]);
+    await adminDatabase.query('DELETE FROM orders WHERE organization_id IN ($1, $2)', [
+      organizationId,
+      otherOrganizationId,
+    ]);
+    await adminDatabase.query('DELETE FROM users WHERE id IN ($1, $2)', [userId, otherUserId]);
     await adminDatabase.query('DELETE FROM organizations WHERE id IN ($1, $2)', [
       organizationId,
       otherOrganizationId,
