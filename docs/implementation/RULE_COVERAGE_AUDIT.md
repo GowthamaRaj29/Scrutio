@@ -92,10 +92,10 @@ evidence.
 ## Coverage summary
 
 - **Implemented and directly verified:** 4 rules — R001, R005, R012, and R060.
-- **Implemented but under-tested:** 8 rules — R002-R004, R006-R008, and R011.
+- **Implemented but under-tested:** 7 rules — R002-R004, R006-R008, and R011.
 - **Partial or misidentified:** 3 rules — R020, R021, R039, with R041 sharing a condition under the wrong ID (4 affected IDs).
-- **Blocked primarily by missing evidence queries/normalization:** 22 rules — R009, R010, R014-R019, R022-R027, R029-R031, R033-R038, R040, R042-R044, R049, R052, R055, R056.
-- **Not started because required schema, audit, incident, or external data is absent:** 26 rules — R013, R028, R032, R041, R045-R048, R050-R051, R053-R054, R057-R059, R061-R063 and other schema-dependent rules listed above.
+- **Blocked primarily by missing evidence queries/normalization:** 31 rules — R009, R010, R014-R019, R022-R027, R029-R031, R033-R038, R040, R042-R044, R049, R052, R055, and R056.
+- **Not started because required schema, audit, incident, or external data is absent:** 18 rules — R013, R028, R032, R041, R045-R048, R050-R051, R053-R054, R057-R059, and R061-R063.
 
 The counts intentionally distinguish a rule whose data exists but is not queried from a rule that
 cannot be implemented without changing the authoritative model. They do not imply full rule
