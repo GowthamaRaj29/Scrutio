@@ -1,6 +1,10 @@
 import express, { type Request, type Response } from 'express';
 import { z } from 'zod';
-import { orderIngestionSchema, webhookIngestionSchema } from './domain/ingestion.js';
+import {
+  ledgerEntryIngestionSchema,
+  orderIngestionSchema,
+  webhookIngestionSchema,
+} from './domain/ingestion.js';
 import { requireAuthentication, readSessionToken } from './middleware/auth.js';
 import { AuthService, AuthenticationError, LoginRateLimiter } from './services/auth-service.js';
 import { PaymentNotFoundError } from './services/payment-status-service.js';
@@ -92,6 +96,34 @@ export function createApp(dependencies: AppDependencies): express.Express {
       response.status(500).json({ error: 'Internal server error' });
     }
   });
+
+  app.post(
+    '/api/v1/organizations/:organizationId/ledger/entries',
+    requireAuthentication(authService),
+    async (request: Request, response: Response): Promise<void> => {
+      const path = investigationPathSchema.safeParse(request.params);
+      const body = ledgerEntryIngestionSchema.safeParse(request.body);
+      const user = request.authenticatedUser;
+      if (!path.success || !body.success) {
+        response.status(400).json({ error: 'Invalid ledger ingestion request' });
+        return;
+      }
+      if (user === undefined || user.organizationId !== path.data.organizationId) {
+        response.status(403).json({ error: 'Forbidden' });
+        return;
+      }
+      try {
+        await ingestionService.ingestLedgerEntry(user.organizationId, body.data);
+        response.status(202).json({ status: 'accepted' });
+      } catch (error: unknown) {
+        if (error instanceof IngestionConflictError) {
+          response.status(409).json({ error: error.message });
+          return;
+        }
+        response.status(500).json({ error: 'Ledger ingestion failed' });
+      }
+    },
+  );
 
   app.post(
     '/api/v1/organizations/:organizationId/orders',

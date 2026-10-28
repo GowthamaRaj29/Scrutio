@@ -59,3 +59,15 @@ Order ingestion upserts the organization-scoped order and optionally links it to
 payment. Webhook ingestion is idempotent by organization and event ID and rejects conflicting
 re-deliveries. Successful commits invalidate the in-process payment-status cache. The current
 implementation does not claim cache invalidation across multiple API processes.
+
+Ledger entries can be ingested through:
+
+```text
+POST /api/v1/organizations/:organizationId/ledger/entries
+```
+
+The payload requires a tenant-scoped `sourceEventId`, an existing account, optional payment,
+exact-decimal entry amount/currency, and at least one debit and credit journal line. Debit and
+credit totals must balance exactly with the entry amount and use the same currency. PostgreSQL
+uniqueness prevents duplicate source postings; failed or conflicting transactions do not leave
+partial ledger history.

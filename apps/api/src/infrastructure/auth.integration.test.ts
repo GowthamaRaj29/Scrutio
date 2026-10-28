@@ -76,6 +76,13 @@ void test('PostgreSQL authentication sessions are tenant-scoped and revocable', 
        VALUES ($1, 'AUTH-PAYMENT-001', 10.00, 'SUCCESS', 'PAID', true, true)`,
       [organizationId],
     );
+    const accountResult = await adminDatabase.query<{ id: string }>(
+      `INSERT INTO ledger_accounts (organization_id, account_code, account_type)
+       VALUES ($1, 'CASH', 'ASSET') RETURNING id`,
+      [organizationId],
+    );
+    const accountId = accountResult.rows[0]?.id;
+    assert.ok(accountId);
     const paymentStatusService = new PaymentStatusService(
       (organization, paymentId) =>
         appDatabase.withTransaction(organization, (client) =>
@@ -174,6 +181,54 @@ void test('PostgreSQL authentication sessions are tenant-scoped and revocable', 
         },
       );
       assert.equal(conflictingWebhookResponse.status, 409);
+      const ledgerPayload = {
+        sourceEventId: 'AUTH-LEDGER-001',
+        paymentId: 'AUTH-PAYMENT-001',
+        accountId,
+        entryType: 'PAYMENT_CAPTURE',
+        status: 'POSTED',
+        amount: '10.00',
+        currency: 'INR',
+        postedAt: '2026-10-28T12:01:00.000Z',
+        lines: [
+          { direction: 'DEBIT', amount: '10.00', currency: 'INR' },
+          { direction: 'CREDIT', amount: '10.00', currency: 'INR' },
+        ],
+      };
+      const ledgerResponse = await fetch(
+        `${baseUrl}/api/v1/organizations/${organizationId}/ledger/entries`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', cookie },
+          body: JSON.stringify(ledgerPayload),
+        },
+      );
+      assert.equal(ledgerResponse.status, 202);
+      const duplicateLedgerResponse = await fetch(
+        `${baseUrl}/api/v1/organizations/${organizationId}/ledger/entries`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', cookie },
+          body: JSON.stringify(ledgerPayload),
+        },
+      );
+      assert.equal(duplicateLedgerResponse.status, 409);
+      const unbalancedLedgerResponse = await fetch(
+        `${baseUrl}/api/v1/organizations/${organizationId}/ledger/entries`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', cookie },
+          body: JSON.stringify({
+            ...ledgerPayload,
+            sourceEventId: 'AUTH-LEDGER-002',
+            lines: [
+              { direction: 'DEBIT', amount: '10.00', currency: 'INR' },
+              { direction: 'CREDIT', amount: '9.99', currency: 'INR' },
+            ],
+          }),
+        },
+      );
+      assert.equal(unbalancedLedgerResponse.status, 409);
       const overrideResponse = await fetch(
         `${baseUrl}/api/v1/organizations/${otherOrganizationId}/payments/AUTH-PAYMENT-001/status`,
         { headers: { cookie } },
@@ -237,6 +292,15 @@ void test('PostgreSQL authentication sessions are tenant-scoped and revocable', 
       organizationId,
     ]);
     await adminDatabase.query('DELETE FROM investigations WHERE organization_id = $1', [
+      organizationId,
+    ]);
+    await adminDatabase.query('DELETE FROM journal_lines WHERE organization_id = $1', [
+      organizationId,
+    ]);
+    await adminDatabase.query('DELETE FROM ledger_entries WHERE organization_id = $1', [
+      organizationId,
+    ]);
+    await adminDatabase.query('DELETE FROM ledger_accounts WHERE organization_id = $1', [
       organizationId,
     ]);
     await adminDatabase.query('DELETE FROM payments WHERE organization_id = $1', [organizationId]);

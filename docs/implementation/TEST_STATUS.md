@@ -149,6 +149,23 @@ The authenticated PostgreSQL integration flow now verifies:
 
 Ledger, settlement, and external provider ingestion are still not implemented.
 
+## Ledger ingestion verification — 2026-10-28
+
+The PostgreSQL integration flow now verifies:
+
+- Balanced debit/credit lines using exact decimal-to-cents arithmetic are accepted.
+- Unbalanced entries return `409` and leave no partial ledger rows.
+- Repeated source events are rejected without duplicate ledger postings.
+- Concurrent duplicate protection is backed by the organization-scoped PostgreSQL unique
+  constraint on `source_event_id`, not an in-memory map.
+- Currency mismatches are rejected before persistence.
+- Account and payment references remain tenant-scoped through RLS and composite foreign keys.
+- Successful ledger writes update payment ledger presence and invalidate the payment cache after
+  commit.
+
+The current schema models one ledger entry account plus journal lines. Multi-account posting,
+settlement reconciliation, and richer reversal workflows remain outside the verified slice.
+
 ## Cache correctness and concurrency verification — 2026-10-28
 
 `npm run check` passed:

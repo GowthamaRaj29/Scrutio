@@ -44,6 +44,15 @@ export const investigationEvidenceSchema = z.object({
   payment: investigationPaymentSchema,
   order: investigationOrderSchema.nullable().default(null),
   webhook: investigationWebhookSchema.nullable().default(null),
+  ledger: z
+    .object({
+      entryId: z.uuid(),
+      amount: z.string().regex(/^\d+(\.\d{1,2})?$/),
+      currency: z.string().min(1).max(10),
+      status: z.enum(['PENDING', 'POSTED', 'REVERSED']),
+    })
+    .nullable()
+    .default(null),
 });
 
 export type InvestigationEvidence = z.infer<typeof investigationEvidenceSchema>;

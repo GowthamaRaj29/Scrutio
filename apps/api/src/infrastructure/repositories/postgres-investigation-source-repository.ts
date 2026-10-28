@@ -24,6 +24,10 @@ type SourceRow = {
   webhook_signature_verified: boolean | null;
   webhook_processing_status: 'RECEIVED' | 'PROCESSED' | 'FAILED' | null;
   webhook_received_at: Date | null;
+  ledger_entry_id: string | null;
+  ledger_amount: string | null;
+  ledger_currency: string | null;
+  ledger_status: 'PENDING' | 'POSTED' | 'REVERSED' | null;
 };
 
 export class InvestigationSourceRepository {
@@ -42,7 +46,9 @@ export class InvestigationSourceRepository {
               w.event_id AS webhook_event_id, w.payment_id AS webhook_payment_id,
               w.signature_verified AS webhook_signature_verified,
               w.processing_status AS webhook_processing_status,
-              w.received_at AS webhook_received_at
+              w.received_at AS webhook_received_at,
+              l.id AS ledger_entry_id, l.amount::text AS ledger_amount,
+              l.currency AS ledger_currency, l.status AS ledger_status
          FROM payments p
          LEFT JOIN orders o
            ON o.organization_id = p.organization_id AND o.order_id = p.order_id
@@ -53,6 +59,13 @@ export class InvestigationSourceRepository {
             ORDER BY received_at DESC
             LIMIT 1
          ) w ON true
+         LEFT JOIN LATERAL (
+           SELECT id, amount, currency, status
+             FROM ledger_entries
+            WHERE organization_id = p.organization_id AND payment_id = p.payment_id
+            ORDER BY created_at DESC
+            LIMIT 1
+         ) l ON true
         WHERE p.organization_id = $1 AND p.payment_id = $2`,
       [organizationId, paymentId],
     );
@@ -94,6 +107,18 @@ export class InvestigationSourceRepository {
               signatureVerified: row.webhook_signature_verified,
               processingStatus: row.webhook_processing_status,
               receivedAt: row.webhook_received_at.toISOString(),
+            },
+      ledger:
+        row.ledger_entry_id === null ||
+        row.ledger_amount === null ||
+        row.ledger_currency === null ||
+        row.ledger_status === null
+          ? null
+          : {
+              entryId: row.ledger_entry_id,
+              amount: row.ledger_amount,
+              currency: row.ledger_currency,
+              status: row.ledger_status,
             },
     });
   }

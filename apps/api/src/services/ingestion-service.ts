@@ -1,4 +1,8 @@
-import type { OrderIngestion, WebhookIngestion } from '../domain/ingestion.js';
+import type {
+  LedgerEntryIngestion,
+  OrderIngestion,
+  WebhookIngestion,
+} from '../domain/ingestion.js';
 import type { Database, Queryable } from '../infrastructure/postgres/database.js';
 import type { PaymentStatusService } from './payment-status-service.js';
 
@@ -77,6 +81,82 @@ export class IngestionService {
     }
   }
 
+  public async ingestLedgerEntry(
+    organizationId: string,
+    input: LedgerEntryIngestion,
+  ): Promise<void> {
+    try {
+      await this.database.withTransaction(organizationId, async (client) => {
+        const debit = input.lines
+          .filter((line) => line.direction === 'DEBIT')
+          .reduce((total, line) => total + toCents(line.amount), 0n);
+        const credit = input.lines
+          .filter((line) => line.direction === 'CREDIT')
+          .reduce((total, line) => total + toCents(line.amount), 0n);
+        if (debit !== credit || debit !== toCents(input.amount)) {
+          throw new IngestionConflictError('Ledger entry is not balanced');
+        }
+        if (input.lines.some((line) => line.currency !== input.currency)) {
+          throw new IngestionConflictError('Ledger line currency must match entry currency');
+        }
+        const existing = await client.query<{ id: string }>(
+          `SELECT id FROM ledger_entries
+          WHERE organization_id = $1 AND source_event_id = $2`,
+          [organizationId, input.sourceEventId],
+        );
+        if (existing.rows[0] !== undefined) {
+          throw new IngestionConflictError('Ledger source event already exists');
+        }
+        const entry = await client.query<{ id: string }>(
+          `INSERT INTO ledger_entries (
+           organization_id, payment_id, account_id, entry_type, status,
+           amount, currency, posted_at, source_event_id
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         RETURNING id`,
+          [
+            organizationId,
+            input.paymentId ?? null,
+            input.accountId,
+            input.entryType,
+            input.status,
+            input.amount,
+            input.currency,
+            input.postedAt ?? null,
+            input.sourceEventId,
+          ],
+        );
+        const entryId = entry.rows[0]?.id;
+        if (entryId === undefined) {
+          throw new Error('Ledger entry creation returned no row');
+        }
+        for (const line of input.lines) {
+          await client.query(
+            `INSERT INTO journal_lines (
+             organization_id, ledger_entry_id, direction, amount, currency
+           ) VALUES ($1, $2, $3, $4, $5)`,
+            [organizationId, entryId, line.direction, line.amount, line.currency],
+          );
+        }
+        if (input.paymentId !== undefined) {
+          await client.query(
+            `UPDATE payments
+              SET ledger_entry_present = true, version = version + 1, updated_at = NOW()
+            WHERE organization_id = $1 AND payment_id = $2`,
+            [organizationId, input.paymentId],
+          );
+        }
+      });
+    } catch (error: unknown) {
+      if (isUniqueViolation(error)) {
+        throw new IngestionConflictError('Ledger source event already exists');
+      }
+      throw error;
+    }
+    if (input.paymentId !== undefined) {
+      this.paymentStatusService.invalidateAfterMutation(organizationId, input.paymentId);
+    }
+  }
+
   private async upsertOrder(
     client: Queryable,
     organizationId: string,
@@ -114,4 +194,20 @@ export class IngestionService {
       throw new Error('Payment not found for order ingestion');
     }
   }
+}
+
+function toCents(amount: string): bigint {
+  const parts = amount.split('.');
+  const whole = parts[0] ?? '0';
+  const fraction = parts[1] ?? '';
+  return BigInt(whole) * 100n + BigInt(fraction.padEnd(2, '0'));
+}
+
+function isUniqueViolation(error: unknown): error is { code: string } {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (error as { code?: unknown }).code === '23505'
+  );
 }

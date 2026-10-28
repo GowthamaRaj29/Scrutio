@@ -1,6 +1,6 @@
 # Implementation plan
 
-## Current phase: Authoritative operational evidence ingestion
+## Current phase: Tenant-safe ledger ingestion and reconciliation
 
 1. Establish reproducible package, TypeScript, lint, formatting, and test tooling. **Complete.**
 2. Verify the baseline with `npm run check`. **Complete.**
@@ -11,8 +11,9 @@
 7. Expose protected investigation creation and retrieval backed by authoritative PostgreSQL evidence. **Complete for the supported payment/order/webhook evidence slice; API and PostgreSQL authorization tests pass.**
 8. Correct payment-status cache invalidation, tenant-safe single-flight behavior, bounded memory, and measurable local concurrency behavior. **Complete for the current single-process deployment model; cross-process invalidation remains a documented limitation.**
 9. Add tenant-authenticated, idempotent order and webhook ingestion. **Complete for the currently supported order/webhook slice; ledger, settlement, and provider ingestion remain next.**
-10. Add optional `@google/genai` integration only for Tier 3 synthesis, with strict schema/evidence validation.
-11. Add React web application and end-to-end workflows.
-12. Add CI gates, security scanning, migration verification, and performance measurements.
+10. Add tenant-authenticated ledger entry ingestion with exact-decimal balance validation and source-event idempotency. **Complete for the existing ledger schema; settlement and richer reversal semantics remain next.**
+11. Add optional `@google/genai` integration only for Tier 3 synthesis, with strict schema/evidence validation.
+12. Add React web application and end-to-end workflows.
+13. Add CI gates, security scanning, migration verification, and performance measurements.
 
 No phase is complete until its feature evidence is recorded in `FEATURE_EVIDENCE.md`.

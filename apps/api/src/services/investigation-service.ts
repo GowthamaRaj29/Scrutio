@@ -63,12 +63,16 @@ export class InvestigationService {
               ? 'webhook'
               : reference.startsWith('order.')
                 ? 'order'
-                : 'payment',
+                : reference.startsWith('ledger.')
+                  ? 'ledger'
+                  : 'payment',
             reference.startsWith('webhook.') && evidence.webhook !== null
               ? evidence.webhook.eventId
               : reference.startsWith('order.') && evidence.order !== null
                 ? evidence.order.orderId
-                : evidence.payment.paymentId,
+                : reference.startsWith('ledger.') && evidence.ledger !== null
+                  ? evidence.ledger.entryId
+                  : evidence.payment.paymentId,
             reference,
           );
         }
