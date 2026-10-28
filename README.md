@@ -12,7 +12,7 @@ npm run check
 
 Start local PostgreSQL with `docker compose up -d postgres`, then apply migrations using the migration tooling added in the database phase.
 
-The application uses the least-privilege `scrutio_app` role. `DATABASE_ADMIN_URL` is only for migrations; never use the administrative connection string in application runtime configuration. The role is created by `database/init/01-create-app-role.sql` on a new named volume.
+The application uses the least-privilege `scrutio_app` role. `DATABASE_ADMIN_URL` and `DATABASE_APP_PASSWORD` are only for migrations; never use the administrative connection string in application runtime configuration. The migration runner creates or updates the role without storing its password in the repository.
 
 With Docker running, the PostgreSQL verification workflow is:
 

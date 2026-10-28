@@ -20,6 +20,29 @@ export async function runMigrations(databaseUrl: string): Promise<void> {
         applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )
     `);
+    const config = loadConfig();
+    if (config.databaseAppPassword !== undefined) {
+      const roleSql = await database.query<{ statement: string }>(
+        `SELECT format(
+          'DO $role$ BEGIN
+             IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = %L) THEN
+               CREATE ROLE %I LOGIN PASSWORD %L NOSUPERUSER NOBYPASSRLS;
+             ELSE
+               ALTER ROLE %I LOGIN PASSWORD %L NOSUPERUSER NOBYPASSRLS;
+             END IF;
+           END $role$;',
+          'scrutio_app',
+          'scrutio_app',
+          $1::text,
+          'scrutio_app',
+          $1::text
+        ) AS statement`,
+        [config.databaseAppPassword],
+      );
+      await database.query(roleSql.rows[0]?.statement ?? '');
+      await database.query('GRANT CONNECT ON DATABASE scrutio TO scrutio_app');
+      await database.query('GRANT USAGE ON SCHEMA public TO scrutio_app');
+    }
     const files = (await readdir(migrationsDirectory))
       .map((fileName) => migrationNameSchema.parse(basename(fileName)))
       .sort();

@@ -44,4 +44,5 @@ PostgreSQL integration and migration execution require a live PostgreSQL `DATABA
 - Negative cross-tenant lookup: passed
 - Fresh empty-database bootstrap verification: passed in an isolated PostgreSQL 17 container on port 15432
 - Fresh bootstrap applied `001_initial.sql` and `002_app_role_grants.sql`; RLS was enabled and forced; `scrutio_app` was verified non-superuser and non-bypass-RLS
+- Fresh bootstrap role creation is migration-managed and does not require committed credentials or a platform-specific init script.
 - The local `.env` contains a credential value that must be rotated before any external AI integration is enabled; it is ignored by Git and was not committed.

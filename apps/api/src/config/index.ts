@@ -5,6 +5,7 @@ const environmentSchema = z.object({
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
   DATABASE_URL: z.url().optional(),
   DATABASE_ADMIN_URL: z.url().optional(),
+  DATABASE_APP_PASSWORD: z.string().min(1).optional(),
   AI_PROVIDER_API_KEY: z.string().min(1).optional(),
   AI_PROVIDER_MODEL: z.string().min(1).default('gemini-3.8-flash'),
   AI_PROMPT_VERSION: z.coerce.number().int().positive().default(1),
@@ -17,6 +18,7 @@ export type AppConfig = {
   port: number;
   databaseUrl?: string;
   databaseAdminUrl?: string;
+  databaseAppPassword?: string;
   aiProviderApiKey?: string;
   aiProviderModel: string;
   aiPromptVersion: number;
@@ -33,6 +35,9 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env): AppCon
     ...(parsed.DATABASE_ADMIN_URL === undefined
       ? {}
       : { databaseAdminUrl: parsed.DATABASE_ADMIN_URL }),
+    ...(parsed.DATABASE_APP_PASSWORD === undefined
+      ? {}
+      : { databaseAppPassword: parsed.DATABASE_APP_PASSWORD }),
     ...(parsed.AI_PROVIDER_API_KEY === undefined
       ? {}
       : { aiProviderApiKey: parsed.AI_PROVIDER_API_KEY }),
