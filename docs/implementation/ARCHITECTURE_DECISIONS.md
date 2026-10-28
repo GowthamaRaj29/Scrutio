@@ -20,3 +20,17 @@ Registration, password recovery, social login, and distributed rate limiting are
 - Rule IDs and the rule-set version are present on every evaluation and finding. Findings and evidence references use stable lexical ordering.
 - Thresholds are typed environment configuration with validated defaults, not scattered literals in rule conditionals.
 - The engine currently supports the payment/order/webhook evidence available to the repository. Rules requiring authoritative order, webhook, ledger, settlement, and pattern tables remain blocked until those schemas are added.
+
+## Operational data foundation
+
+- Operational records are tenant-scoped and use PostgreSQL RLS in addition to composite foreign
+  keys that prevent relationships from crossing organizations.
+- Investigation requesters use a composite foreign key to organization membership, preventing a
+  valid user from being recorded as the requester for another organization.
+- Monetary values use `NUMERIC(18,2)` and currencies are stored explicitly. Event identifiers and
+  organization-scoped business identifiers are unique to support replay-safe ingestion later.
+- Investigation results are stored as structured JSON plus normalized findings and evidence
+  references. Missing upstream evidence is represented by the persisted status/result rather than
+  fabricated source records.
+- Upstream ingestion, settlement reconciliation, and customer/payment-method aggregation remain
+  outside this phase because their source semantics are not implemented in the repository.

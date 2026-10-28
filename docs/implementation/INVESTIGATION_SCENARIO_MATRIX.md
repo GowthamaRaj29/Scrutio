@@ -24,6 +24,8 @@ explicit optional evidence. Unsupported rules remain blocked rather than being i
 | Repeat execution | All supported    | Same evidence and evaluation time            | Byte-equivalent result                      | `investigation-engine.test.ts` | PASS                     |
 | Tenant isolation | All supported    | Session organization differs from evidence   | Must be enforced before engine invocation   | Auth integration boundary      | BLOCKED                  |
 
-Rules R009-R010, R013-R019, R022-R063 require authoritative schema and repositories for orders,
-webhook events, ledger entries, journal lines, settlements, customer/payment-method aggregates, and
-provider history. They are intentionally not marked complete in this phase.
+The operational data foundation now provides tables for orders, webhook events, ledger entries,
+journal lines, settlements, and persisted investigations. Their upstream ingestion and repositories
+are not yet connected to the evaluator, so rules R009-R010, R013-R019, R022-R063 remain
+`BLOCKED` or `IMPLEMENTED_NOT_VERIFIED` as documented here. Customer/payment-method aggregates,
+provider history, and pattern windows still require source semantics and repository work.

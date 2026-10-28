@@ -32,3 +32,7 @@ The payment-status path is intentionally implemented before AI integration. Its 
 Authentication is database-backed. Login creates an expiring server-side session whose token is stored only as a hash; protected payment requests derive tenant context from that session and PostgreSQL RLS. Run `npm run migrate` before starting the API.
 
 The deterministic investigation engine currently evaluates validated payment, optional order, and optional webhook evidence without AI calls. See `docs/implementation/INVESTIGATION_SCENARIO_MATRIX.md` for verified coverage and blocked rule families.
+
+Migrations `004_operational_data.sql` and `005_investigation_membership_integrity.sql` add
+tenant-isolated operational source tables and durable investigation result storage. They are
+applied by `npm run migrate` and do not delete existing data.

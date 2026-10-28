@@ -23,3 +23,7 @@ TypeScript, Zod, and PostgreSQL stack. Rule thresholds are validated through the
 configuration module.
 
 The PostgreSQL application role must not be a superuser or have `BYPASSRLS`; using the bootstrap superuser for application queries would invalidate the RLS security boundary.
+
+The operational data migration continues to use PostgreSQL foreign keys, composite unique
+constraints, `NUMERIC(18,2)`, `TIMESTAMPTZ`, and forced RLS. No dependency or external service
+was added.

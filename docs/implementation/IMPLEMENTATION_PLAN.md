@@ -1,13 +1,13 @@
 # Implementation plan
 
-## Current phase: Deterministic investigation engine
+## Current phase: Operational data models and investigation persistence
 
 1. Establish reproducible package, TypeScript, lint, formatting, and test tooling. **Complete.**
 2. Verify the baseline with `npm run check`. **Complete.**
 3. Add PostgreSQL pool, transaction context, repository, migration runner, and integration tests. **Complete.**
 4. Add authentication, sessions, authorization, audit events, and security tests. **Complete for the implemented API scope.**
 5. Implement deterministic payment and incident rule engine with the documented rule/scenario matrix. **Partially complete: supported payment/order/webhook rules are implemented; remaining rule families are blocked by missing authoritative schemas.**
-6. Add bounded cache, outbox invalidation, and single-flight tests.
+6. Add operational data models, repositories, persisted investigation results, bounded cache, outbox invalidation, and single-flight tests. **Operational data foundation complete; cache/outbox/single-flight remain next.**
 7. Add optional `@google/genai` integration only for Tier 3 synthesis, with strict schema/evidence validation.
 8. Add React web application and end-to-end workflows.
 9. Add CI gates, security scanning, migration verification, and performance measurements.

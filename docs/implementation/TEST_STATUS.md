@@ -91,3 +91,24 @@ Verified behaviors:
 
 The complete 63-rule matrix is not complete because the current database has no authoritative
 orders, webhook events, ledger entries, journal lines, settlements, or pattern aggregate schemas.
+
+## Operational data foundation verification — 2026-10-28
+
+`npm run migrate` passed and applied `004_operational_data.sql` and
+`005_investigation_membership_integrity.sql` to the existing PostgreSQL
+database without deleting the existing volume or data.
+
+`npm run test:integration` passed:
+
+- 3 PostgreSQL integration tests passed.
+- Operational tables and RLS policies were available after migration.
+- Composite foreign keys rejected a cross-tenant webhook-to-payment relationship.
+- Composite membership foreign keys rejected a cross-tenant investigation requester.
+- Invalid cross-tenant test data was isolated with a savepoint and did not abort the transaction.
+- Investigation results persisted and round-tripped with rule-set version, status, timestamp,
+  fingerprint, result, and tenant scope.
+- Cross-tenant investigation retrieval returned no result.
+- Existing authentication and payment RLS tests continued to pass.
+
+The clean-database migration run remains to be performed in an isolated PostgreSQL container;
+the existing development database verification does not substitute for that evidence.
