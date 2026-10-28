@@ -4,6 +4,8 @@ import test from 'node:test';
 import { loadConfig } from '../config/index.js';
 import { createApp } from '../app.js';
 import { PaymentStatusCache } from './cache/payment-status-cache.js';
+import { PostgresPaymentRepository } from './repositories/postgres-payment-repository.js';
+import { PaymentStatusService } from '../services/payment-status-service.js';
 import { InvestigationService } from '../services/investigation-service.js';
 import { AuthService, AuthenticationError, SessionError } from '../services/auth-service.js';
 import { createPasswordHash } from '../services/auth-service.js';
@@ -74,9 +76,17 @@ void test('PostgreSQL authentication sessions are tenant-scoped and revocable', 
       [organizationId],
     );
     const app = createApp({
-      paymentStatusCache: new PaymentStatusCache(10, 30_000),
+      paymentStatusService: new PaymentStatusService(
+        (organization, paymentId) =>
+          appDatabase.withTransaction(organization, (client) =>
+            new PostgresPaymentRepository(client).findByOrganizationAndPaymentId(
+              organization,
+              paymentId,
+            ),
+          ),
+        new PaymentStatusCache(10, 30_000),
+      ),
       authService,
-      database: appDatabase,
       investigationService: new InvestigationService(appDatabase),
     });
     const server = app.listen(0);

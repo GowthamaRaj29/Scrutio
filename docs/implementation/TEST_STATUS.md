@@ -134,3 +134,24 @@ the existing development database verification does not substitute for that evid
 Limitations: the current API exposes only the supported payment/order/webhook evidence slice;
 viewer-specific role coverage, frontend E2E tests, cache invalidation/single-flight tests, and
 the optional AI boundary remain future phases.
+
+## Cache correctness and concurrency verification — 2026-10-28
+
+`npm run check` passed:
+
+- Formatting, ESLint with zero warnings, strict TypeScript, 17 unit tests, and production build.
+
+Cache tests verified:
+
+- TTL expiry triggers a fresh authoritative lookup.
+- Concurrent identical requests share one lookup for the same organization and payment.
+- Identical payment IDs in different organizations do not share in-flight work.
+- Failed lookups are removed and never cached as valid responses.
+- Successful mutation invalidation prevents a stale pre-invalidation read from repopulating the cache.
+- In-flight state remains bounded when distinct-key load exceeds the configured limit.
+
+The application now constructs one shared `PaymentStatusService`, rather than one service per
+request, so single-flight deduplication applies across concurrent API requests. The current
+repository has no production payment mutation endpoint; `invalidateAfterMutation` is the
+post-commit hook for future authoritative write paths. No cross-process latency or invalidation
+claim was made.

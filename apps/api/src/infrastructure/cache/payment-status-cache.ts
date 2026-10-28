@@ -7,6 +7,7 @@ type CacheEntry = {
 
 export class PaymentStatusCache {
   private readonly entries = new Map<string, CacheEntry>();
+  private invalidationVersion = 0;
 
   public constructor(
     private readonly maxEntries: number,
@@ -30,6 +31,22 @@ export class PaymentStatusCache {
   }
 
   public set(organizationId: string, paymentId: string, value: PaymentStatusResponse): void {
+    this.setIfCurrent(organizationId, paymentId, value, this.invalidationVersion);
+  }
+
+  public currentVersion(): number {
+    return this.invalidationVersion;
+  }
+
+  public setIfCurrent(
+    organizationId: string,
+    paymentId: string,
+    value: PaymentStatusResponse,
+    version: number,
+  ): void {
+    if (version !== this.invalidationVersion) {
+      return;
+    }
     const key = this.key(organizationId, paymentId);
     this.entries.delete(key);
     while (this.entries.size >= this.maxEntries) {
@@ -46,6 +63,7 @@ export class PaymentStatusCache {
   }
 
   public invalidate(organizationId: string, paymentId: string): void {
+    this.invalidationVersion += 1;
     this.entries.delete(this.key(organizationId, paymentId));
   }
 

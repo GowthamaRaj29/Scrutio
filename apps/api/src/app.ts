@@ -1,15 +1,13 @@
 import express, { type Request, type Response } from 'express';
 import { z } from 'zod';
 import { requireAuthentication, readSessionToken } from './middleware/auth.js';
-import { PostgresPaymentRepository } from './infrastructure/repositories/postgres-payment-repository.js';
 import { AuthService, AuthenticationError, LoginRateLimiter } from './services/auth-service.js';
-import { PaymentNotFoundError, PaymentStatusService } from './services/payment-status-service.js';
+import { PaymentNotFoundError } from './services/payment-status-service.js';
 import {
   InvestigationNotFoundError,
   InvestigationService,
 } from './services/investigation-service.js';
-import type { Database } from './infrastructure/postgres/database.js';
-import type { PaymentStatusCache } from './infrastructure/cache/payment-status-cache.js';
+import type { PaymentStatusService } from './services/payment-status-service.js';
 
 const paymentPathSchema = z.object({
   organizationId: z.uuid(),
@@ -32,9 +30,8 @@ const investigationRequestSchema = z.object({
 });
 
 export type AppDependencies = {
-  paymentStatusCache: PaymentStatusCache;
+  paymentStatusService: PaymentStatusService;
   authService: AuthService;
-  database: Database;
   investigationService: InvestigationService;
 };
 
@@ -47,7 +44,7 @@ function setSessionCookie(response: Response, token: string): void {
 
 export function createApp(dependencies: AppDependencies): express.Express {
   const app = express();
-  const { paymentStatusCache, authService, database, investigationService } = dependencies;
+  const { paymentStatusService, authService, investigationService } = dependencies;
   const loginRateLimiter = new LoginRateLimiter();
   app.disable('x-powered-by');
   app.use(express.json({ limit: '32kb' }));
@@ -192,11 +189,9 @@ export function createApp(dependencies: AppDependencies): express.Express {
       }
 
       try {
-        const paymentStatus = await database.withTransaction(user.organizationId, async (client) =>
-          new PaymentStatusService(
-            new PostgresPaymentRepository(client),
-            paymentStatusCache,
-          ).getStatus(user.organizationId, parsed.data.paymentId),
+        const paymentStatus = await paymentStatusService.getStatus(
+          user.organizationId,
+          parsed.data.paymentId,
         );
         response.json(paymentStatus);
       } catch (error: unknown) {

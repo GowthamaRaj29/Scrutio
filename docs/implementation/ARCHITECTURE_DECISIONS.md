@@ -34,3 +34,19 @@ Registration, password recovery, social login, and distributed rate limiting are
   fabricated source records.
 - Upstream ingestion, settlement reconciliation, and customer/payment-method aggregation remain
   outside this phase because their source semantics are not implemented in the repository.
+
+  ## Payment-status cache consistency
+  - Payment-status cache keys contain the organization ID and payment ID; the cache is never consulted
+    before the authenticated route has checked the session organization.
+  - The cache is bounded by a configurable maximum entry count and TTL. Expired entries are removed
+    on access, and least-recently-used entries are evicted when the bound is reached.
+  - A shared `PaymentStatusService` performs tenant-scoped single-flight lookups. Failed lookups are
+    not cached, completed requests are removed promptly, and a maximum in-flight count prevents
+    unbounded promise retention under overload.
+  - Successful authoritative mutations must call `invalidateAfterMutation` only after their database
+    transaction commits. Invalidation advances a version so a read that began before the mutation
+    cannot repopulate the cache with stale data. There is currently no production payment mutation
+    endpoint; this hook is the required boundary for future ingestion/write paths.
+  - In-process invalidation is process-local. Multiple API replicas would require a durable
+    invalidation mechanism or a conservative cache bypass; this implementation does not claim
+    cross-process cache consistency.
