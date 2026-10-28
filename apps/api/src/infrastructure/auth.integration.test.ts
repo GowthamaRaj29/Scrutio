@@ -4,6 +4,7 @@ import test from 'node:test';
 import { loadConfig } from '../config/index.js';
 import { createApp } from '../app.js';
 import { PaymentStatusCache } from './cache/payment-status-cache.js';
+import { InvestigationService } from '../services/investigation-service.js';
 import { AuthService, AuthenticationError, SessionError } from '../services/auth-service.js';
 import { createPasswordHash } from '../services/auth-service.js';
 import { runMigrations } from './migrations/run-migrations.js';
@@ -76,6 +77,7 @@ void test('PostgreSQL authentication sessions are tenant-scoped and revocable', 
       paymentStatusCache: new PaymentStatusCache(10, 30_000),
       authService,
       database: appDatabase,
+      investigationService: new InvestigationService(appDatabase),
     });
     const server = app.listen(0);
     try {
@@ -85,6 +87,15 @@ void test('PostgreSQL authentication sessions are tenant-scoped and revocable', 
         throw new Error('Test server did not expose a TCP address');
       }
       const baseUrl = `http://127.0.0.1:${String(address.port)}`;
+      const unauthenticatedInvestigation = await fetch(
+        `${baseUrl}/api/v1/organizations/${organizationId}/investigations`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ paymentId: 'AUTH-PAYMENT-001' }),
+        },
+      );
+      assert.equal(unauthenticatedInvestigation.status, 401);
       const loginResponse = await fetch(`${baseUrl}/api/v1/auth/login`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -104,6 +115,32 @@ void test('PostgreSQL authentication sessions are tenant-scoped and revocable', 
         { headers: { cookie } },
       );
       assert.equal(overrideResponse.status, 403);
+
+      const investigationResponse = await fetch(
+        `${baseUrl}/api/v1/organizations/${organizationId}/investigations`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', cookie },
+          body: JSON.stringify({
+            paymentId: 'AUTH-PAYMENT-001',
+            evaluationTimestamp: '2026-10-28T12:00:00.000Z',
+          }),
+        },
+      );
+      assert.equal(investigationResponse.status, 201);
+      const investigation = (await investigationResponse.json()) as { id: string; status: string };
+      assert.equal(investigation.status, 'PARTIAL');
+
+      const retrievedInvestigation = await fetch(
+        `${baseUrl}/api/v1/organizations/${organizationId}/investigations/${investigation.id}`,
+        { headers: { cookie } },
+      );
+      assert.equal(retrievedInvestigation.status, 200);
+      const crossTenantInvestigation = await fetch(
+        `${baseUrl}/api/v1/organizations/${otherOrganizationId}/investigations/${investigation.id}`,
+        { headers: { cookie } },
+      );
+      assert.equal(crossTenantInvestigation.status, 403);
 
       const logoutResponse = await fetch(`${baseUrl}/api/v1/auth/logout`, {
         method: 'POST',
@@ -132,6 +169,9 @@ void test('PostgreSQL authentication sessions are tenant-scoped and revocable', 
       (error: unknown) => error instanceof SessionError,
     );
   } finally {
+    await adminDatabase.query('DELETE FROM investigations WHERE organization_id = $1', [
+      organizationId,
+    ]);
     await adminDatabase.query('DELETE FROM payments WHERE organization_id = $1', [organizationId]);
     await adminDatabase.query('DELETE FROM users WHERE id = $1', [userId]);
     await adminDatabase.query('DELETE FROM organizations WHERE id IN ($1, $2)', [

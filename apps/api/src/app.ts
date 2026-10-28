@@ -4,6 +4,10 @@ import { requireAuthentication, readSessionToken } from './middleware/auth.js';
 import { PostgresPaymentRepository } from './infrastructure/repositories/postgres-payment-repository.js';
 import { AuthService, AuthenticationError, LoginRateLimiter } from './services/auth-service.js';
 import { PaymentNotFoundError, PaymentStatusService } from './services/payment-status-service.js';
+import {
+  InvestigationNotFoundError,
+  InvestigationService,
+} from './services/investigation-service.js';
 import type { Database } from './infrastructure/postgres/database.js';
 import type { PaymentStatusCache } from './infrastructure/cache/payment-status-cache.js';
 
@@ -16,11 +20,22 @@ const loginSchema = z.object({
   password: z.string().min(1).max(256),
   organizationId: z.uuid().optional(),
 });
+const investigationPathSchema = z.object({
+  organizationId: z.uuid(),
+});
+const investigationIdPathSchema = investigationPathSchema.extend({
+  investigationId: z.uuid(),
+});
+const investigationRequestSchema = z.object({
+  paymentId: z.string().min(1).max(100),
+  evaluationTimestamp: z.iso.datetime({ offset: true }).optional(),
+});
 
 export type AppDependencies = {
   paymentStatusCache: PaymentStatusCache;
   authService: AuthService;
   database: Database;
+  investigationService: InvestigationService;
 };
 
 function setSessionCookie(response: Response, token: string): void {
@@ -32,7 +47,7 @@ function setSessionCookie(response: Response, token: string): void {
 
 export function createApp(dependencies: AppDependencies): express.Express {
   const app = express();
-  const { paymentStatusCache, authService, database } = dependencies;
+  const { paymentStatusCache, authService, database, investigationService } = dependencies;
   const loginRateLimiter = new LoginRateLimiter();
   app.disable('x-powered-by');
   app.use(express.json({ limit: '32kb' }));
@@ -90,6 +105,73 @@ export function createApp(dependencies: AppDependencies): express.Express {
         'scrutio_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0',
       );
       response.status(204).send();
+    },
+  );
+
+  app.post(
+    '/api/v1/organizations/:organizationId/investigations',
+    requireAuthentication(authService),
+    async (request: Request, response: Response): Promise<void> => {
+      const path = investigationPathSchema.safeParse(request.params);
+      const body = investigationRequestSchema.safeParse(request.body);
+      const user = request.authenticatedUser;
+      if (!path.success || !body.success) {
+        response.status(400).json({ error: 'Invalid investigation request' });
+        return;
+      }
+      if (
+        user === undefined ||
+        user.organizationId !== path.data.organizationId ||
+        !['owner', 'admin', 'analyst'].includes(user.role)
+      ) {
+        response.status(403).json({ error: 'Forbidden' });
+        return;
+      }
+      try {
+        const investigation = await investigationService.execute(
+          user.organizationId,
+          user.userId,
+          body.data.paymentId,
+          body.data.evaluationTimestamp ?? new Date().toISOString(),
+        );
+        response.status(201).json(investigation);
+      } catch (error: unknown) {
+        if (error instanceof InvestigationNotFoundError) {
+          response.status(404).json({ error: error.message });
+          return;
+        }
+        response.status(500).json({ error: 'Internal server error' });
+      }
+    },
+  );
+
+  app.get(
+    '/api/v1/organizations/:organizationId/investigations/:investigationId',
+    requireAuthentication(authService),
+    async (request: Request, response: Response): Promise<void> => {
+      const parsed = investigationIdPathSchema.safeParse(request.params);
+      const user = request.authenticatedUser;
+      if (!parsed.success) {
+        response.status(400).json({ error: 'Invalid investigation path' });
+        return;
+      }
+      if (user === undefined || user.organizationId !== parsed.data.organizationId) {
+        response.status(403).json({ error: 'Forbidden' });
+        return;
+      }
+      try {
+        const investigation = await investigationService.findById(
+          user.organizationId,
+          parsed.data.investigationId,
+        );
+        response.json(investigation);
+      } catch (error: unknown) {
+        if (error instanceof InvestigationNotFoundError) {
+          response.status(404).json({ error: error.message });
+          return;
+        }
+        response.status(500).json({ error: 'Internal server error' });
+      }
     },
   );
 

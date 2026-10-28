@@ -112,3 +112,25 @@ database without deleting the existing volume or data.
 
 The clean-database migration run remains to be performed in an isolated PostgreSQL container;
 the existing development database verification does not substitute for that evidence.
+
+## Protected investigation API verification — 2026-10-28
+
+`npm run check` passed:
+
+- Prettier formatting, ESLint with zero warnings, strict TypeScript, 11 unit tests, and production build.
+
+`npm run test:integration` passed:
+
+- 3 PostgreSQL integration tests passed.
+- Unauthenticated investigation creation returned `401`.
+- Authenticated creation for the session organization returned `201`.
+- Missing order and webhook evidence produced a persisted `PARTIAL` investigation rather than a false complete result.
+- Persisted investigation retrieval succeeded for the owning organization.
+- A URL organization override returned `403`; no tenant identity was accepted from the request body.
+- Existing authentication, payment RLS, and operational-data tests continued to pass.
+
+`npm audit --omit=dev` passed with 0 vulnerabilities.
+
+Limitations: the current API exposes only the supported payment/order/webhook evidence slice;
+viewer-specific role coverage, frontend E2E tests, cache invalidation/single-flight tests, and
+the optional AI boundary remain future phases.

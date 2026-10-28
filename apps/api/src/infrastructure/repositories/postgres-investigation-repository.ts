@@ -1,6 +1,7 @@
 import type {
   CreateInvestigationInput,
   PersistedInvestigation,
+  PersistedInvestigationFinding,
 } from '../../domain/operational-data.js';
 import type { Queryable } from '../postgres/database.js';
 
@@ -65,6 +66,52 @@ export class InvestigationRepository {
     );
     const row = result.rows[0];
     return row === undefined ? null : this.map(row);
+  }
+
+  public async addFinding(
+    organizationId: string,
+    investigationId: string,
+    finding: Omit<PersistedInvestigationFinding, 'id' | 'organizationId' | 'investigationId'>,
+  ): Promise<PersistedInvestigationFinding> {
+    const result = await this.database.query<PersistedInvestigationFinding>(
+      `INSERT INTO investigation_findings (
+         organization_id, investigation_id, rule_id, rule_version,
+         severity, status, explanation
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING id, organization_id AS "organizationId",
+                 investigation_id AS "investigationId", rule_id AS "ruleId",
+                 rule_version AS "ruleVersion", severity, status, explanation`,
+      [
+        organizationId,
+        investigationId,
+        finding.ruleId,
+        finding.ruleVersion,
+        finding.severity,
+        finding.status,
+        finding.explanation,
+      ],
+    );
+    const row = result.rows[0];
+    if (row === undefined) {
+      throw new Error('Investigation finding creation returned no row');
+    }
+    return row;
+  }
+
+  public async addEvidenceReference(
+    organizationId: string,
+    investigationId: string,
+    findingId: string,
+    sourceType: string,
+    sourceId: string,
+    fieldName: string | null,
+  ): Promise<void> {
+    await this.database.query(
+      `INSERT INTO investigation_evidence_references (
+         organization_id, investigation_id, finding_id, source_type, source_id, field_name
+       ) VALUES ($1, $2, $3, $4, $5, $6)`,
+      [organizationId, investigationId, findingId, sourceType, sourceId, fieldName],
+    );
   }
 
   private map(row: InvestigationRow): PersistedInvestigation {

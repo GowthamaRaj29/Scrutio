@@ -36,3 +36,14 @@ The deterministic investigation engine currently evaluates validated payment, op
 Migrations `004_operational_data.sql` and `005_investigation_membership_integrity.sql` add
 tenant-isolated operational source tables and durable investigation result storage. They are
 applied by `npm run migrate` and do not delete existing data.
+
+Authenticated analysts, admins, and owners can create investigations with:
+
+```text
+POST /api/v1/organizations/:organizationId/investigations
+{"paymentId":"PAYMENT-123"}
+```
+
+The organization is derived from the session and the URL must match it. Results are retrieved
+with `GET /api/v1/organizations/:organizationId/investigations/:investigationId`. Investigation
+creation is deterministic and database-backed; missing source evidence is reported as `PARTIAL`.

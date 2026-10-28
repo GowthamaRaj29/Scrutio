@@ -29,3 +29,14 @@ export type CreateInvestigationInput = Omit<
   result?: unknown;
   errorCode?: string;
 };
+
+export type PersistedInvestigationFinding = {
+  id: string;
+  organizationId: string;
+  investigationId: string;
+  ruleId: string;
+  ruleVersion: string;
+  severity: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  status: 'MATCH' | 'NO_MATCH' | 'INSUFFICIENT_EVIDENCE';
+  explanation: string;
+};
