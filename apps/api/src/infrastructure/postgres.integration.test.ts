@@ -34,6 +34,7 @@ void test('PostgreSQL migration and tenant-scoped payment lookup', async (contex
         [organizationId],
       );
     });
+
     await database.withTransaction(otherOrganizationId, async (client) => {
       await client.query(
         `INSERT INTO payments (

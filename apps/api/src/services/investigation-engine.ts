@@ -252,6 +252,64 @@ export class InvestigationEngine {
         ['payment.status', 'payment.ledgerEntryPresent'],
       ),
       evaluateRule(
+        'R022',
+        evidence.ledger === null
+          ? 'INSUFFICIENT_EVIDENCE'
+          : evidence.ledger.status === 'POSTED' &&
+              ['FAILED', 'CANCELLED', 'EXPIRED'].includes(payment.status)
+            ? 'MATCH'
+            : 'NO_MATCH',
+        evidence.ledger === null
+          ? 'Ledger evidence is unavailable; a posted entry for a failed payment cannot be evaluated.'
+          : evidence.ledger.status === 'POSTED' &&
+              ['FAILED', 'CANCELLED', 'EXPIRED'].includes(payment.status)
+            ? 'A posted ledger entry exists for a failed, cancelled, or expired payment.'
+            : 'Payment and ledger state do not match the R022 condition.',
+        ['ledger.status', 'payment.status'],
+      ),
+      evaluateRule(
+        'R033',
+        evidence.settlement === null
+          ? 'INSUFFICIENT_EVIDENCE'
+          : evidence.settlement.status === 'SETTLED' && payment.status === 'PENDING'
+            ? 'MATCH'
+            : 'NO_MATCH',
+        evidence.settlement === null
+          ? 'Settlement evidence is unavailable; settlement/payment state cannot be compared.'
+          : evidence.settlement.status === 'SETTLED' && payment.status === 'PENDING'
+            ? 'A settled settlement references a payment that remains pending.'
+            : 'Settlement and payment state do not match the R033 condition.',
+        ['payment.status', 'settlement.status'],
+      ),
+      evaluateRule(
+        'R035',
+        evidence.settlement === null
+          ? 'INSUFFICIENT_EVIDENCE'
+          : payment.status === 'FAILED'
+            ? 'MATCH'
+            : 'NO_MATCH',
+        evidence.settlement === null
+          ? 'Settlement evidence is unavailable; failed-payment settlement inclusion cannot be evaluated.'
+          : payment.status === 'FAILED'
+            ? 'A failed payment is included in a settlement.'
+            : 'Settlement and payment state do not match the R035 condition.',
+        ['payment.status', 'settlement.status'],
+      ),
+      evaluateRule(
+        'R036',
+        evidence.settlement === null
+          ? 'INSUFFICIENT_EVIDENCE'
+          : evidence.settlement.currency !== payment.currency
+            ? 'MATCH'
+            : 'NO_MATCH',
+        evidence.settlement === null
+          ? 'Settlement evidence is unavailable; settlement/payment currency cannot be compared.'
+          : evidence.settlement.currency !== payment.currency
+            ? 'Settlement currency does not match the payment currency.'
+            : 'Settlement and payment currencies match.',
+        ['payment.currency', 'settlement.currency'],
+      ),
+      evaluateRule(
         'R039',
         webhook === null
           ? 'INSUFFICIENT_EVIDENCE'
@@ -277,6 +335,46 @@ export class InvestigationEngine {
           'webhook.processingStatus',
           'payment.ledgerEntryPresent',
         ],
+      ),
+      evaluateRule(
+        'R042',
+        order === null || webhook === null || evidence.ledger === null
+          ? 'INSUFFICIENT_EVIDENCE'
+          : payment.status === 'SUCCESS' &&
+              webhook.processingStatus === 'PROCESSED' &&
+              evidence.ledger.status === 'POSTED' &&
+              order.status === 'PENDING'
+            ? 'MATCH'
+            : 'NO_MATCH',
+        order === null || webhook === null || evidence.ledger === null
+          ? 'Order, webhook, or ledger evidence is unavailable; downstream processing cannot be evaluated.'
+          : payment.status === 'SUCCESS' &&
+              webhook.processingStatus === 'PROCESSED' &&
+              evidence.ledger.status === 'POSTED' &&
+              order.status === 'PENDING'
+            ? 'Payment, webhook, and ledger processing completed while the order remains pending.'
+            : 'Payment, webhook, ledger, and order state do not match the R042 condition.',
+        ['ledger.status', 'order.status', 'payment.status', 'webhook.processingStatus'],
+      ),
+      evaluateRule(
+        'R044',
+        order === null || evidence.ledger === null
+          ? 'INSUFFICIENT_EVIDENCE'
+          : payment.status === 'SUCCESS' &&
+              evidence.ledger.status === 'POSTED' &&
+              order.status === 'PAID' &&
+              evidence.settlement === null
+            ? 'MATCH'
+            : 'NO_MATCH',
+        order === null || evidence.ledger === null
+          ? 'Order or ledger evidence is unavailable; pre-settlement completion cannot be evaluated.'
+          : payment.status === 'SUCCESS' &&
+              evidence.ledger.status === 'POSTED' &&
+              order.status === 'PAID' &&
+              evidence.settlement === null
+            ? 'Payment, ledger, and order processing completed but no settlement exists.'
+            : 'Payment, ledger, order, and settlement state do not match the R044 condition.',
+        ['ledger.status', 'order.status', 'payment.status', 'settlement.settlementId'],
       ),
       evaluateRule(
         'R041',
@@ -316,8 +414,18 @@ export class InvestigationEngine {
   }
 
   private toFinding(evaluation: InvestigationRuleEvaluation): InvestigationFinding {
-    const criticalRules = new Set(['R004', 'R012', 'R021', 'R039', 'R041', 'R060']);
-    const highRules = new Set(['R001', 'R002', 'R003']);
+    const criticalRules = new Set([
+      'R004',
+      'R012',
+      'R021',
+      'R022',
+      'R033',
+      'R035',
+      'R039',
+      'R041',
+      'R060',
+    ]);
+    const highRules = new Set(['R001', 'R002', 'R003', 'R036', 'R042', 'R044']);
     return {
       ruleId: evaluation.ruleId,
       ruleVersion: evaluation.version,

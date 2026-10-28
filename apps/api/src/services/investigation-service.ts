@@ -65,7 +65,9 @@ export class InvestigationService {
                 ? 'order'
                 : reference.startsWith('ledger.')
                   ? 'ledger'
-                  : 'payment',
+                  : reference.startsWith('settlement.')
+                    ? 'settlement'
+                    : 'payment',
             reference.startsWith('payment.duplicate.')
               ? reference.slice('payment.duplicate.'.length)
               : reference.startsWith('webhook.') && evidence.webhook !== null
@@ -74,7 +76,9 @@ export class InvestigationService {
                   ? evidence.order.orderId
                   : reference.startsWith('ledger.') && evidence.ledger !== null
                     ? evidence.ledger.entryId
-                    : evidence.payment.paymentId,
+                    : reference.startsWith('settlement.') && evidence.settlement !== null
+                      ? evidence.settlement.settlementId
+                      : evidence.payment.paymentId,
             reference,
           );
         }

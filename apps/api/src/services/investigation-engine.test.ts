@@ -167,6 +167,89 @@ void test('R004 and R041 remain distinct findings for their shared state predica
   assert.equal(cancelled.findings.find((item) => item.ruleId === 'R004')?.severity, 'CRITICAL');
 });
 
+void test('evidence-query rules evaluate ledger, settlement, and downstream states', () => {
+  const engine = new InvestigationEngine();
+  const ledger = {
+    entryId: '11111111-1111-4111-8111-111111111111',
+    amount: '1000.00',
+    currency: 'INR',
+    status: 'POSTED' as const,
+  };
+  const webhook = {
+    eventId: 'WHK-DOWNSTREAM',
+    paymentId: 'PAY-10001',
+    signatureVerified: true,
+    processingStatus: 'PROCESSED' as const,
+    receivedAt: '2026-10-28T11:59:00.000Z',
+  };
+  const settled = {
+    settlementId: 'STL-1',
+    status: 'SETTLED' as const,
+    amount: '1000.00',
+    currency: 'INR',
+    settledAt: '2026-10-28T12:00:00.000Z',
+  };
+
+  const r022 = engine.evaluate({ ...evidence({ status: 'FAILED' }), ledger }, evaluatedAt);
+  assert.equal(r022.findings.find((item) => item.ruleId === 'R022')?.severity, 'CRITICAL');
+
+  const r033 = engine.evaluate(
+    { ...evidence({ status: 'PENDING' }), settlement: settled },
+    evaluatedAt,
+  );
+  assert.equal(r033.findings.find((item) => item.ruleId === 'R033')?.severity, 'CRITICAL');
+
+  const r035 = engine.evaluate(
+    { ...evidence({ status: 'FAILED' }), settlement: settled },
+    evaluatedAt,
+  );
+  assert.equal(r035.findings.find((item) => item.ruleId === 'R035')?.severity, 'CRITICAL');
+
+  const r036 = engine.evaluate(
+    {
+      ...evidence(),
+      settlement: { ...settled, currency: 'USD' },
+    },
+    evaluatedAt,
+  );
+  assert.equal(r036.findings.find((item) => item.ruleId === 'R036')?.severity, 'HIGH');
+
+  const r042 = engine.evaluate(
+    {
+      ...evidence(),
+      webhook,
+      ledger,
+      order: { orderId: 'ORD-20001', status: 'PENDING', amount: '1000.00', currency: 'INR' },
+    },
+    evaluatedAt,
+  );
+  assert.equal(r042.findings.find((item) => item.ruleId === 'R042')?.severity, 'HIGH');
+
+  const r044 = engine.evaluate(
+    {
+      ...evidence(),
+      ledger,
+      order: { orderId: 'ORD-20001', status: 'PAID', amount: '1000.00', currency: 'INR' },
+    },
+    evaluatedAt,
+  );
+  assert.equal(r044.findings.find((item) => item.ruleId === 'R044')?.severity, 'HIGH');
+  assert.deepEqual(r044.findings.find((item) => item.ruleId === 'R044')?.evidenceReferences, [
+    'ledger.status',
+    'order.status',
+    'payment.status',
+    'settlement.settlementId',
+  ]);
+
+  const missing = engine.evaluate(evidence({ status: 'FAILED' }), evaluatedAt);
+  for (const ruleId of ['R022', 'R033', 'R035', 'R036', 'R042', 'R044']) {
+    assert.equal(
+      missing.evaluations.find((item) => item.ruleId === ruleId)?.status,
+      'INSUFFICIENT_EVIDENCE',
+    );
+  }
+});
+
 void test('threshold boundary is inclusive and below-threshold data does not match', () => {
   const atThreshold = new InvestigationEngine({
     pendingPaymentThresholdMinutes: 30,
