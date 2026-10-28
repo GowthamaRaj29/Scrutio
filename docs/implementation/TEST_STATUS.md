@@ -39,3 +39,4 @@ PostgreSQL integration and migration execution require a live PostgreSQL `DATABA
 - Docker capability: blocked; Docker is not installed in the current environment
 - Migration execution against an empty PostgreSQL database: not verified
 - Negative cross-tenant RLS access: not verified
+- The local `.env` contains a credential value that must be rotated before any external AI integration is enabled; it is ignored by Git and was not committed.

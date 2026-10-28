@@ -12,4 +12,17 @@ npm run check
 
 Start local PostgreSQL with `docker compose up -d postgres`, then apply migrations using the migration tooling added in the database phase.
 
+With Docker running, the PostgreSQL verification workflow is:
+
+```powershell
+docker compose up -d postgres
+docker compose ps
+npm run migrate
+npm run test:integration
+npm run check
+docker compose stop postgres
+```
+
+The Compose file uses a named `scrutio-postgres` volume. Stopping the service preserves the database; do not remove the volume unless the database is intentionally being destroyed. Use `docker system df` before any Docker cleanup.
+
 The payment-status path is intentionally implemented before AI integration. Its response includes `aiInvocations: 0` so tests can prove the zero-LLM invariant.
