@@ -14,6 +14,7 @@ const migrationsDirectory = join(
 export async function runMigrations(databaseUrl: string): Promise<void> {
   const database = new Database(databaseUrl);
   try {
+    await database.query("SELECT pg_advisory_lock(hashtextextended('scrutio:migrations', 0))");
     await database.query(`
       CREATE TABLE IF NOT EXISTS schema_migrations (
         version VARCHAR(255) PRIMARY KEY,
@@ -61,6 +62,7 @@ export async function runMigrations(databaseUrl: string): Promise<void> {
       });
     }
   } finally {
+    await database.query("SELECT pg_advisory_unlock(hashtextextended('scrutio:migrations', 0))");
     await database.close();
   }
 }

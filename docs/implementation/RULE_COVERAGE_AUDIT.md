@@ -33,8 +33,8 @@ evidence.
 | R006 | Payment exceeds order by more than 0.01                 | IMPLEMENTED_UNDERTESTED        | Engine compares amounts, but no direct test verifies the specification's 0.01 tolerance                                              |
 | R007 | Successful payment is below order by more than 0.01     | IMPLEMENTED_UNDERTESTED        | Engine compares amounts, but no direct test verifies the specification's 0.01 tolerance                                              |
 | R008 | Payment/order currency mismatch                         | IMPLEMENTED_UNDERTESTED        | Engine condition and order evidence exist; no direct positive test                                                                   |
-| R009 | Over-collection across successful payments for an order | BLOCKED_QUERY_OR_EVIDENCE      | Payment/order tables exist, but source loading has no order-level aggregate                                                          |
-| R010 | Multiple successful payments for one order              | BLOCKED_QUERY_OR_EVIDENCE      | Payment/order tables exist, but source loading is for one payment only                                                               |
+| R009 | Over-collection across successful payments for an order | IMPLEMENTED_VERIFIED           | Tenant-scoped order aggregate returns successful sum/count; exact 1% boundary and live query coverage are tested                     |
+| R010 | Multiple successful payments for one order              | IMPLEMENTED_VERIFIED           | Tenant-scoped successful-payment count aggregate and live duplicate-order coverage are tested                                        |
 | R011 | Verified webhook not processed past threshold           | IMPLEMENTED_UNDERTESTED        | Webhook evidence and engine condition exist; direct positive threshold test is absent                                                |
 | R012 | Unverified webhook was processed                        | IMPLEMENTED_VERIFIED           | Engine condition and direct mismatch test                                                                                            |
 | R013 | Duplicate processed provider event ID                   | NOT_STARTED_SCHEMA_OR_EXTERNAL | Webhook schema stores `event_id`, not the specification's `provider_event_id`; no aggregate evaluation                               |
@@ -48,7 +48,7 @@ evidence.
 | R021 | Successful payment has no ledger entry                  | IMPLEMENTED_VERIFIED           | Engine now uses the specification ID and the existing SC-01 test verifies the finding                                                |
 | R022 | Posted ledger for failed/cancelled/expired payment      | IMPLEMENTED_VERIFIED           | Existing latest-ledger evidence, direct rule tests, and live PostgreSQL query coverage verify tenant-safe evaluation                 |
 | R023 | Payment-credit ledger amount mismatch                   | BLOCKED_QUERY_OR_EVIDENCE      | Amounts are loaded, but ledger `entry_type` is not normalized                                                                        |
-| R024 | Duplicate posted payment-credit ledger entries          | BLOCKED_QUERY_OR_EVIDENCE      | Ledger table exists, but source loading has no ledger aggregate                                                                      |
+| R024 | Duplicate posted payment-credit ledger entries          | IMPLEMENTED_VERIFIED           | Tenant-scoped `POSTED`/`PAYMENT_CREDIT` count aggregate and live duplicate-ledger coverage are tested                                |
 | R025 | Ledger pending beyond one hour                          | BLOCKED_QUERY_OR_EVIDENCE      | Ledger status exists, but ledger age is not loaded                                                                                   |
 | R026 | Journal debit/credit imbalance                          | BLOCKED_QUERY_OR_EVIDENCE      | Journal lines exist and ingestion validates them, but investigation evidence omits lines                                             |
 | R027 | Unexpected ledger account code                          | BLOCKED_QUERY_OR_EVIDENCE      | Ledger accounts exist, but account code/allowlist is not in evidence                                                                 |
@@ -61,7 +61,7 @@ evidence.
 | R034 | Past-due pending settlement                             | BLOCKED_QUERY_OR_EVIDENCE      | Settlement date exists in PostgreSQL but is not normalized into evidence                                                             |
 | R035 | Failed payment included in settlement                   | IMPLEMENTED_VERIFIED           | Tenant-safe settlement-link evidence, direct rule test, and live PostgreSQL evidence test verify the condition                       |
 | R036 | Settlement/payment currency mismatch                    | IMPLEMENTED_UNDERTESTED        | Payment and settlement currencies are loaded and evaluated; direct mismatch coverage exists                                          |
-| R037 | Payment appears in multiple settlements                 | BLOCKED_QUERY_OR_EVIDENCE      | Settlement links exist, but source loading selects only one settlement                                                               |
+| R037 | Payment appears in multiple settlements                 | IMPLEMENTED_VERIFIED           | Tenant-scoped distinct settlement-link count aggregate and live multi-settlement coverage are tested                                 |
 | R038 | Settled settlement has no UTR                           | BLOCKED_QUERY_OR_EVIDENCE      | UTR exists in the settlement table but is not loaded into evidence                                                                   |
 | R039 | Full pipeline stall                                     | IMPLEMENTED_VERIFIED           | Engine requires successful payment, pending order, unprocessed webhook, and no ledger; direct processed-webhook negative test exists |
 | R040 | Paid/order-complete payment missing settlement          | BLOCKED_QUERY_OR_EVIDENCE      | Required payment/order/webhook/settlement facts are available, but no rule/threshold evaluation exists                               |
@@ -91,10 +91,10 @@ evidence.
 
 ## Coverage summary
 
-- **Implemented and directly verified:** 11 rules — R001, R004, R005, R012, R020, R021, R022, R035, R039, R041, and R060.
+- **Implemented and directly verified:** 15 rules — R001, R004, R005, R009, R010, R012, R020, R021, R022, R024, R035, R037, R039, R041, and R060.
 - **Implemented but under-tested:** 10 rules — R002, R003, R006-R008, R011, R033, R036, R042, and R044.
 - **Partial or misidentified:** none among R004, R020, R021, R039, and R041 after this correction.
-- **Blocked primarily by missing evidence queries/normalization:** 25 rules — R009, R010, R014-R019, R023-R027, R029-R031, R034, R037-R038, R040, R043, R049, R052, R055, and R056.
+- **Blocked primarily by missing evidence queries/normalization:** 21 rules — R014-R019, R023, R025-R027, R029-R031, R034, R038, R040, R043, R049, R052, R055, and R056.
 - **Not started because required schema, audit, incident, or external data is absent:** 17 rules — R013, R028, R032, R045-R048, R050-R051, R053-R054, R057-R059, and R061-R063.
 
 The counts intentionally distinguish a rule whose data exists but is not queried from a rule that
@@ -105,8 +105,8 @@ coverage, AI coverage, or production readiness.
 
 1. Add direct boundary tests for the already-coded POM and webhook rules, including the
    specification's `0.01` tolerance for R006/R007.
-2. Add bounded aggregate queries for R009/R010, R024, R037, R052, R055, and R056 with
-   tenant-scoped indexes only after measuring query plans.
+2. Add bounded aggregate queries for R052, R055, and R056 with tenant-scoped indexes only
+   after measuring query plans.
 3. Defer schema-dependent families such as customer, idempotency, capture-history, fee,
    refund, source-IP, and settlement reconciliation rules until their authoritative semantics
    are specified and represented.

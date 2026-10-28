@@ -15,6 +15,10 @@ type SourceRow = {
   order_status: string | null;
   webhook_processed: boolean;
   ledger_entry_present: boolean;
+  order_successful_payment_amount: string | null;
+  order_successful_payment_count: number | null;
+  posted_payment_credit_count: number | null;
+  settlement_count: number;
   version: number;
   payment_updated_at: Date;
   order_id: string | null;
@@ -56,6 +60,12 @@ export class InvestigationSourceRepository {
               p.status AS payment_status,
               p.amount::text, p.currency, p.order_status, p.webhook_processed,
               p.ledger_entry_present, p.version, p.updated_at AS payment_updated_at,
+              CASE WHEN p.order_id IS NULL THEN NULL ELSE order_totals.successful_amount END
+                AS order_successful_payment_amount,
+              CASE WHEN p.order_id IS NULL THEN NULL ELSE order_totals.successful_count END
+                AS order_successful_payment_count,
+              ledger_totals.posted_payment_credit_count,
+              settlement_totals.settlement_count,
               o.order_id, o.status AS actual_order_status,
               o.amount::text AS order_amount, o.currency AS order_currency,
               w.event_id AS webhook_event_id, w.payment_id AS webhook_payment_id,
@@ -75,6 +85,15 @@ export class InvestigationSourceRepository {
          LEFT JOIN orders o
            ON o.organization_id = p.organization_id AND o.order_id = p.order_id
          LEFT JOIN LATERAL (
+           SELECT COALESCE(SUM(successful.amount), 0)::text AS successful_amount,
+                  COUNT(*)::int AS successful_count
+             FROM payments successful
+            WHERE p.order_id IS NOT NULL
+              AND successful.organization_id = p.organization_id
+              AND successful.order_id = p.order_id
+              AND successful.status = 'SUCCESS'
+         ) order_totals ON true
+         LEFT JOIN LATERAL (
            SELECT event_id, payment_id, signature_verified, processing_status, received_at
              FROM webhook_events
             WHERE organization_id = p.organization_id AND payment_id = p.payment_id
@@ -89,6 +108,14 @@ export class InvestigationSourceRepository {
             LIMIT 1
          ) l ON true
          LEFT JOIN LATERAL (
+           SELECT COUNT(*)::int AS posted_payment_credit_count
+             FROM ledger_entries posted
+            WHERE posted.organization_id = p.organization_id
+              AND posted.payment_id = p.payment_id
+              AND posted.status = 'POSTED'
+              AND posted.entry_type = 'PAYMENT_CREDIT'
+         ) ledger_totals ON true
+         LEFT JOIN LATERAL (
            SELECT s.settlement_id, s.status, s.amount, s.currency, s.settled_at
              FROM settlements s
              JOIN settlement_payments sp
@@ -98,6 +125,12 @@ export class InvestigationSourceRepository {
             ORDER BY s.created_at DESC
             LIMIT 1
          ) s ON true
+         LEFT JOIN LATERAL (
+           SELECT COUNT(DISTINCT sp.settlement_id)::int AS settlement_count
+             FROM settlement_payments sp
+            WHERE sp.organization_id = p.organization_id
+              AND sp.payment_id = p.payment_id
+         ) settlement_totals ON true
           LEFT JOIN LATERAL (
             SELECT provider, provider_event_id, provider_reference_id,
                    observed_status, observed_at
@@ -184,6 +217,10 @@ export class InvestigationSourceRepository {
               settledAt:
                 row.settlement_settled_at === null ? null : row.settlement_settled_at.toISOString(),
             },
+      orderSuccessfulPaymentAmount: row.order_successful_payment_amount,
+      orderSuccessfulPaymentCount: row.order_successful_payment_count,
+      postedPaymentCreditCount: row.posted_payment_credit_count,
+      settlementCount: row.settlement_count,
       providerHistory:
         row.provider_name === null ||
         row.provider_event_id === null ||

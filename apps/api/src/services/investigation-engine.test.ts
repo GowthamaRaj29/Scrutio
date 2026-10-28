@@ -35,6 +35,10 @@ function evidence(
     settlement: null,
     providerHistory: null,
     duplicateProviderPaymentIds: [],
+    orderSuccessfulPaymentAmount: null,
+    orderSuccessfulPaymentCount: null,
+    postedPaymentCreditCount: null,
+    settlementCount: 0,
   };
 }
 
@@ -248,6 +252,58 @@ void test('evidence-query rules evaluate ledger, settlement, and downstream stat
       'INSUFFICIENT_EVIDENCE',
     );
   }
+});
+
+void test('aggregate rules detect over-collection, duplicate payments, ledger postings, and settlements', () => {
+  const aggregateEvidence = {
+    ...evidence(),
+    orderSuccessfulPaymentAmount: '2020.01',
+    orderSuccessfulPaymentCount: 2,
+    postedPaymentCreditCount: 2,
+    settlementCount: 2,
+  };
+  const result = new InvestigationEngine().evaluate(aggregateEvidence, evaluatedAt);
+  assert.deepEqual(
+    result.findings
+      .filter((finding) => ['R009', 'R010', 'R024', 'R037'].includes(finding.ruleId))
+      .map((finding) => [finding.ruleId, finding.severity]),
+    [
+      ['R009', 'CRITICAL'],
+      ['R010', 'CRITICAL'],
+      ['R024', 'CRITICAL'],
+      ['R037', 'CRITICAL'],
+    ],
+  );
+  assert.deepEqual(
+    result.findings.find((finding) => finding.ruleId === 'R009')?.evidenceReferences,
+    ['order.amount', 'orderSuccessfulPaymentAmount'],
+  );
+});
+
+void test('aggregate rules respect exact boundaries and missing aggregate evidence', () => {
+  const atTolerance = new InvestigationEngine().evaluate(
+    {
+      ...evidence(),
+      orderSuccessfulPaymentAmount: '1010.00',
+      orderSuccessfulPaymentCount: 1,
+      postedPaymentCreditCount: 1,
+      settlementCount: 1,
+    },
+    evaluatedAt,
+  );
+  assert.equal(atTolerance.evaluations.find((item) => item.ruleId === 'R009')?.status, 'NO_MATCH');
+  assert.equal(atTolerance.evaluations.find((item) => item.ruleId === 'R010')?.status, 'NO_MATCH');
+  assert.equal(atTolerance.evaluations.find((item) => item.ruleId === 'R024')?.status, 'NO_MATCH');
+  assert.equal(atTolerance.evaluations.find((item) => item.ruleId === 'R037')?.status, 'NO_MATCH');
+
+  const missing = new InvestigationEngine().evaluate(evidence(), evaluatedAt);
+  for (const ruleId of ['R009', 'R010', 'R024']) {
+    assert.equal(
+      missing.evaluations.find((item) => item.ruleId === ruleId)?.status,
+      'INSUFFICIENT_EVIDENCE',
+    );
+  }
+  assert.equal(missing.evaluations.find((item) => item.ruleId === 'R037')?.status, 'NO_MATCH');
 });
 
 void test('threshold boundary is inclusive and below-threshold data does not match', () => {

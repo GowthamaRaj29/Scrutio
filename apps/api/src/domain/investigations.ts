@@ -65,6 +65,14 @@ export const investigationEvidenceSchema = z.object({
     })
     .nullable()
     .default(null),
+  orderSuccessfulPaymentAmount: z
+    .string()
+    .regex(/^\d+(\.\d{1,2})?$/)
+    .nullable()
+    .default(null),
+  orderSuccessfulPaymentCount: z.number().int().nonnegative().nullable().default(null),
+  postedPaymentCreditCount: z.number().int().nonnegative().nullable().default(null),
+  settlementCount: z.number().int().nonnegative().default(0),
   providerHistory: z
     .object({
       provider: z.string().min(1).max(100),

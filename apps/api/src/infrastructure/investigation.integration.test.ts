@@ -21,6 +21,7 @@ void test('PostgreSQL investigation evidence remains tenant-scoped for ledger an
   const otherOrganizationId = '22222222-2222-4222-8222-222222222222';
   const accountId = '33333333-3333-4333-8333-333333333333';
   const settlementId = '44444444-4444-4444-8444-444444444444';
+  const secondSettlementId = '55555555-5555-4555-8555-555555555555';
   try {
     await adminDatabase.query(
       `INSERT INTO organizations (id, slug, name)
@@ -40,6 +41,8 @@ void test('PostgreSQL investigation evidence remains tenant-scoped for ledger an
           webhook_processed, ledger_entry_present)
        VALUES
          ($1, 'RULE-PAYMENT-001', 'RULE-ORDER-001', 100.00, 'FAILED', 'PAID', true, true),
+         ($1, 'RULE-PAYMENT-002', 'RULE-ORDER-001', 100.00, 'SUCCESS', 'PAID', true, true),
+         ($1, 'RULE-PAYMENT-003', 'RULE-ORDER-001', 100.00, 'SUCCESS', 'PAID', true, true),
          ($2, 'RULE-PAYMENT-001', NULL, 200.00, 'SUCCESS', 'PAID', true, true)
        ON CONFLICT (organization_id, payment_id) DO UPDATE
          SET status = EXCLUDED.status, order_status = EXCLUDED.order_status`,
@@ -61,6 +64,12 @@ void test('PostgreSQL investigation evidence remains tenant-scoped for ledger an
     );
     assert.ok(ledgerResult.rows[0]?.id);
     await adminDatabase.query(
+      `INSERT INTO ledger_entries
+         (organization_id, payment_id, account_id, entry_type, status, amount, currency)
+       VALUES ($1, 'RULE-PAYMENT-001', $2, 'PAYMENT_CREDIT', 'POSTED', 100.00, 'INR')`,
+      [organizationId, accountId],
+    );
+    await adminDatabase.query(
       `INSERT INTO settlements
          (id, organization_id, settlement_id, status, amount, currency, settlement_date, settled_at)
        VALUES ($1, $2, 'RULE-SETTLEMENT-001', 'SETTLED', 100.00, 'INR', CURRENT_DATE, NOW())
@@ -73,6 +82,17 @@ void test('PostgreSQL investigation evidence remains tenant-scoped for ledger an
        ON CONFLICT DO NOTHING`,
       [organizationId, settlementId],
     );
+    await adminDatabase.query(
+      `INSERT INTO settlements
+         (id, organization_id, settlement_id, status, amount, currency, settlement_date, settled_at)
+       VALUES ($1, $2, 'RULE-SETTLEMENT-002', 'SETTLED', 100.00, 'INR', CURRENT_DATE, NOW())`,
+      [secondSettlementId, organizationId],
+    );
+    await adminDatabase.query(
+      `INSERT INTO settlement_payments (organization_id, settlement_id, payment_id)
+       VALUES ($1, $2, 'RULE-PAYMENT-001')`,
+      [organizationId, secondSettlementId],
+    );
 
     const evidence = await appDatabase.withTransaction(organizationId, (client) =>
       new InvestigationSourceRepository(client).findEvidence(organizationId, 'RULE-PAYMENT-001'),
@@ -84,7 +104,23 @@ void test('PostgreSQL investigation evidence remains tenant-scoped for ledger an
       true,
     );
     assert.equal(
+      result.findings.some((finding) => finding.ruleId === 'R009'),
+      true,
+    );
+    assert.equal(
+      result.findings.some((finding) => finding.ruleId === 'R010'),
+      true,
+    );
+    assert.equal(
+      result.findings.some((finding) => finding.ruleId === 'R024'),
+      true,
+    );
+    assert.equal(
       result.findings.some((finding) => finding.ruleId === 'R035'),
+      true,
+    );
+    assert.equal(
+      result.findings.some((finding) => finding.ruleId === 'R037'),
       true,
     );
     assert.equal(

@@ -28,6 +28,15 @@ function moneyEquals(left: string, right: string): boolean {
   return Number(left) === Number(right);
 }
 
+function moneyToCents(value: string): bigint {
+  const [whole = '0', fraction = ''] = value.split('.');
+  return BigInt(whole) * 100n + BigInt(fraction.padEnd(2, '0'));
+}
+
+function exceedsOnePercent(total: string, orderAmount: string): boolean {
+  return moneyToCents(total) * 100n > moneyToCents(orderAmount) * 101n;
+}
+
 function timestampOrNull(value: unknown): string | null {
   return typeof value === 'string' ? value : null;
 }
@@ -74,6 +83,9 @@ export class InvestigationEngine {
     evaluatedAt: string,
   ): InvestigationRuleEvaluation[] {
     const { payment, order, webhook } = evidence;
+    const successfulPaymentAmount = evidence.orderSuccessfulPaymentAmount;
+    const successfulPaymentCount = evidence.orderSuccessfulPaymentCount;
+    const postedPaymentCreditCount = evidence.postedPaymentCreditCount;
     const settlementTimestamp = timestampOrNull(evidence.settlement?.settledAt);
     const lateSettlementWebhook =
       webhook !== null &&
@@ -252,6 +264,34 @@ export class InvestigationEngine {
         ['payment.status', 'payment.ledgerEntryPresent'],
       ),
       evaluateRule(
+        'R009',
+        order === null || successfulPaymentAmount === null || successfulPaymentCount === null
+          ? 'INSUFFICIENT_EVIDENCE'
+          : exceedsOnePercent(successfulPaymentAmount, order.amount)
+            ? 'MATCH'
+            : 'NO_MATCH',
+        order === null || successfulPaymentAmount === null || successfulPaymentCount === null
+          ? 'Order payment aggregate evidence is unavailable; over-collection cannot be evaluated.'
+          : exceedsOnePercent(successfulPaymentAmount, order.amount)
+            ? 'Successful payments for the order exceed the order amount by more than one percent.'
+            : 'Successful payment total does not exceed the order amount tolerance.',
+        ['order.amount', 'orderSuccessfulPaymentAmount'],
+      ),
+      evaluateRule(
+        'R010',
+        order === null || successfulPaymentCount === null
+          ? 'INSUFFICIENT_EVIDENCE'
+          : successfulPaymentCount > 1
+            ? 'MATCH'
+            : 'NO_MATCH',
+        order === null || successfulPaymentCount === null
+          ? 'Order payment count evidence is unavailable; duplicate successful payments cannot be evaluated.'
+          : successfulPaymentCount > 1
+            ? 'Multiple successful payments are associated with the same order.'
+            : 'The order has at most one successful payment.',
+        ['order.orderId', 'orderSuccessfulPaymentCount'],
+      ),
+      evaluateRule(
         'R022',
         evidence.ledger === null
           ? 'INSUFFICIENT_EVIDENCE'
@@ -266,6 +306,20 @@ export class InvestigationEngine {
             ? 'A posted ledger entry exists for a failed, cancelled, or expired payment.'
             : 'Payment and ledger state do not match the R022 condition.',
         ['ledger.status', 'payment.status'],
+      ),
+      evaluateRule(
+        'R024',
+        postedPaymentCreditCount === null
+          ? 'INSUFFICIENT_EVIDENCE'
+          : postedPaymentCreditCount > 1
+            ? 'MATCH'
+            : 'NO_MATCH',
+        postedPaymentCreditCount === null
+          ? 'Posted payment-credit aggregate evidence is unavailable; duplicate ledger postings cannot be evaluated.'
+          : postedPaymentCreditCount > 1
+            ? 'Multiple posted payment-credit ledger entries exist for the payment.'
+            : 'The payment has at most one posted payment-credit ledger entry.',
+        ['payment.paymentId', 'postedPaymentCreditCount'],
       ),
       evaluateRule(
         'R033',
@@ -308,6 +362,14 @@ export class InvestigationEngine {
             ? 'Settlement currency does not match the payment currency.'
             : 'Settlement and payment currencies match.',
         ['payment.currency', 'settlement.currency'],
+      ),
+      evaluateRule(
+        'R037',
+        evidence.settlementCount > 1 ? 'MATCH' : 'NO_MATCH',
+        evidence.settlementCount > 1
+          ? 'The payment appears in multiple settlements.'
+          : 'The payment appears in at most one settlement.',
+        ['payment.paymentId', 'settlementCount'],
       ),
       evaluateRule(
         'R039',
@@ -416,11 +478,15 @@ export class InvestigationEngine {
   private toFinding(evaluation: InvestigationRuleEvaluation): InvestigationFinding {
     const criticalRules = new Set([
       'R004',
+      'R009',
+      'R010',
       'R012',
       'R021',
       'R022',
+      'R024',
       'R033',
       'R035',
+      'R037',
       'R039',
       'R041',
       'R060',

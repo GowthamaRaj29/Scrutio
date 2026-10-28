@@ -232,7 +232,7 @@ future synthesis concern outside the deterministic engine.
 
 `npm run check` passed:
 
-- Formatting, ESLint with zero warnings, strict TypeScript, 25 unit tests, and production build.
+- Formatting, ESLint with zero warnings, strict TypeScript, 27 unit tests, and production build.
 
 `npm run test:integration` passed:
 
@@ -245,6 +245,24 @@ The evidence-query-only slice added deterministic coverage for R022, R033, R035,
 and R044. Existing payment, order, webhook, ledger, and settlement fields were reused; no new
 business data model was introduced. Migration `010_allow_info_findings.sql` permits persisted
 INFO findings required by R020.
+
+## Aggregate rule verification — 2026-10-28
+
+The aggregate slice verifies:
+
+- R009 successful-payment sum per order, using an exact integer-cent comparison against
+  `order.amount * 1.01`; the equality boundary does not match.
+- R010 successful-payment count per order.
+- R024 posted `PAYMENT_CREDIT` ledger-entry count per payment.
+- R037 distinct settlement-link count per payment.
+
+The aggregates are organization-scoped lateral projections in the existing evidence query and
+do not load payment, ledger, or settlement histories into application memory. Migration
+`011_investigation_aggregate_indexes.sql` adds order/status and payment/settlement-link indexes.
+`EXPLAIN` on the current small development tables selected sequential scans because the tables
+are small; the predicates are tenant-scoped and the supporting indexes are available as data
+grows. Four PostgreSQL integration tests passed, including duplicate-order, duplicate-ledger,
+multi-settlement, and cross-tenant isolation evidence.
 
 Cache tests verified:
 
