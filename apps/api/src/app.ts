@@ -1,5 +1,6 @@
 import express, { type Request, type Response } from 'express';
 import { z } from 'zod';
+import { orderIngestionSchema, webhookIngestionSchema } from './domain/ingestion.js';
 import { requireAuthentication, readSessionToken } from './middleware/auth.js';
 import { AuthService, AuthenticationError, LoginRateLimiter } from './services/auth-service.js';
 import { PaymentNotFoundError } from './services/payment-status-service.js';
@@ -8,6 +9,7 @@ import {
   InvestigationService,
 } from './services/investigation-service.js';
 import type { PaymentStatusService } from './services/payment-status-service.js';
+import { IngestionConflictError, IngestionService } from './services/ingestion-service.js';
 
 const paymentPathSchema = z.object({
   organizationId: z.uuid(),
@@ -33,6 +35,7 @@ export type AppDependencies = {
   paymentStatusService: PaymentStatusService;
   authService: AuthService;
   investigationService: InvestigationService;
+  ingestionService: IngestionService;
 };
 
 function setSessionCookie(response: Response, token: string): void {
@@ -44,7 +47,8 @@ function setSessionCookie(response: Response, token: string): void {
 
 export function createApp(dependencies: AppDependencies): express.Express {
   const app = express();
-  const { paymentStatusService, authService, investigationService } = dependencies;
+  const { paymentStatusService, authService, investigationService, ingestionService } =
+    dependencies;
   const loginRateLimiter = new LoginRateLimiter();
   app.disable('x-powered-by');
   app.use(express.json({ limit: '32kb' }));
@@ -88,6 +92,60 @@ export function createApp(dependencies: AppDependencies): express.Express {
       response.status(500).json({ error: 'Internal server error' });
     }
   });
+
+  app.post(
+    '/api/v1/organizations/:organizationId/orders',
+    requireAuthentication(authService),
+    async (request: Request, response: Response): Promise<void> => {
+      const path = investigationPathSchema.safeParse(request.params);
+      const body = orderIngestionSchema.safeParse(request.body);
+      const user = request.authenticatedUser;
+      if (!path.success || !body.success) {
+        response.status(400).json({ error: 'Invalid order ingestion request' });
+        return;
+      }
+      if (user === undefined || user.organizationId !== path.data.organizationId) {
+        response.status(403).json({ error: 'Forbidden' });
+        return;
+      }
+      try {
+        await ingestionService.ingestOrder(user.organizationId, body.data);
+        response.status(202).json({ status: 'accepted' });
+      } catch (error: unknown) {
+        response.status(409).json({
+          error: error instanceof Error ? error.message : 'Ingestion failed',
+        });
+      }
+    },
+  );
+
+  app.post(
+    '/api/v1/organizations/:organizationId/webhooks',
+    requireAuthentication(authService),
+    async (request: Request, response: Response): Promise<void> => {
+      const path = investigationPathSchema.safeParse(request.params);
+      const body = webhookIngestionSchema.safeParse(request.body);
+      const user = request.authenticatedUser;
+      if (!path.success || !body.success) {
+        response.status(400).json({ error: 'Invalid webhook ingestion request' });
+        return;
+      }
+      if (user === undefined || user.organizationId !== path.data.organizationId) {
+        response.status(403).json({ error: 'Forbidden' });
+        return;
+      }
+      try {
+        await ingestionService.ingestWebhook(user.organizationId, body.data);
+        response.status(202).json({ status: 'accepted' });
+      } catch (error: unknown) {
+        if (error instanceof IngestionConflictError) {
+          response.status(409).json({ error: error.message });
+          return;
+        }
+        response.status(500).json({ error: 'Ingestion failed' });
+      }
+    },
+  );
 
   app.post(
     '/api/v1/auth/logout',

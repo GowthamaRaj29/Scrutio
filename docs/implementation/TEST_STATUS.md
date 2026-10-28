@@ -135,6 +135,20 @@ Limitations: the current API exposes only the supported payment/order/webhook ev
 viewer-specific role coverage, frontend E2E tests, cache invalidation/single-flight tests, and
 the optional AI boundary remain future phases.
 
+## Operational ingestion verification — 2026-10-28
+
+The authenticated PostgreSQL integration flow now verifies:
+
+- Tenant-scoped order ingestion updates the authoritative order and linked payment.
+- Tenant-scoped webhook ingestion succeeds only for the authenticated organization.
+- Repeating the same webhook event is idempotent.
+- Existing event IDs with conflicting payloads are rejected.
+- Successful order and webhook commits invalidate the shared payment-status cache after commit.
+- The investigation created after ingestion reflects available order and webhook evidence and
+  returns `COMPLETED`; missing-source cases remain truthfully `PARTIAL`.
+
+Ledger, settlement, and external provider ingestion are still not implemented.
+
 ## Cache correctness and concurrency verification — 2026-10-28
 
 `npm run check` passed:

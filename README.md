@@ -47,3 +47,15 @@ POST /api/v1/organizations/:organizationId/investigations
 The organization is derived from the session and the URL must match it. Results are retrieved
 with `GET /api/v1/organizations/:organizationId/investigations/:investigationId`. Investigation
 creation is deterministic and database-backed; missing source evidence is reported as `PARTIAL`.
+
+Authenticated organization members can ingest authoritative order and webhook evidence through:
+
+```text
+POST /api/v1/organizations/:organizationId/orders
+POST /api/v1/organizations/:organizationId/webhooks
+```
+
+Order ingestion upserts the organization-scoped order and optionally links it to an existing
+payment. Webhook ingestion is idempotent by organization and event ID and rejects conflicting
+re-deliveries. Successful commits invalidate the in-process payment-status cache. The current
+implementation does not claim cache invalidation across multiple API processes.

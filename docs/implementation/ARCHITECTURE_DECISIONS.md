@@ -50,3 +50,13 @@ Registration, password recovery, social login, and distributed rate limiting are
   - In-process invalidation is process-local. Multiple API replicas would require a durable
     invalidation mechanism or a conservative cache bypass; this implementation does not claim
     cross-process cache consistency.
+
+  ## Deployment architecture
+
+  Scrutio remains a modular monolith. Authentication, payment status, ingestion, investigation
+  orchestration, deterministic rules, persistence, and HTTP controllers share one process and one
+  tenant-scoped PostgreSQL authority. No current workload has demonstrated independent scaling,
+  failure-isolation, or latency requirements that justify a second service, broker, Redis instance,
+  or container orchestration layer. The ingestion service is kept behind an application boundary so
+  an independently deployed worker can be introduced later if measured throughput or retry pressure
+  requires it, without changing the domain contracts.

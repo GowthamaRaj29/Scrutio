@@ -6,6 +6,7 @@ import { createApp } from '../app.js';
 import { PaymentStatusCache } from './cache/payment-status-cache.js';
 import { PostgresPaymentRepository } from './repositories/postgres-payment-repository.js';
 import { PaymentStatusService } from '../services/payment-status-service.js';
+import { IngestionService } from '../services/ingestion-service.js';
 import { InvestigationService } from '../services/investigation-service.js';
 import { AuthService, AuthenticationError, SessionError } from '../services/auth-service.js';
 import { createPasswordHash } from '../services/auth-service.js';
@@ -75,19 +76,21 @@ void test('PostgreSQL authentication sessions are tenant-scoped and revocable', 
        VALUES ($1, 'AUTH-PAYMENT-001', 10.00, 'SUCCESS', 'PAID', true, true)`,
       [organizationId],
     );
-    const app = createApp({
-      paymentStatusService: new PaymentStatusService(
-        (organization, paymentId) =>
-          appDatabase.withTransaction(organization, (client) =>
-            new PostgresPaymentRepository(client).findByOrganizationAndPaymentId(
-              organization,
-              paymentId,
-            ),
+    const paymentStatusService = new PaymentStatusService(
+      (organization, paymentId) =>
+        appDatabase.withTransaction(organization, (client) =>
+          new PostgresPaymentRepository(client).findByOrganizationAndPaymentId(
+            organization,
+            paymentId,
           ),
-        new PaymentStatusCache(10, 30_000),
-      ),
+        ),
+      new PaymentStatusCache(10, 30_000),
+    );
+    const app = createApp({
+      paymentStatusService,
       authService,
       investigationService: new InvestigationService(appDatabase),
+      ingestionService: new IngestionService(appDatabase, paymentStatusService),
     });
     const server = app.listen(0);
     try {
@@ -120,6 +123,57 @@ void test('PostgreSQL authentication sessions are tenant-scoped and revocable', 
         { headers: { cookie } },
       );
       assert.equal(paymentResponse.status, 200);
+      const orderPayload = {
+        orderId: 'AUTH-ORDER-001',
+        paymentId: 'AUTH-PAYMENT-001',
+        status: 'PAID',
+        amount: '10.00',
+        currency: 'INR',
+      };
+      const orderResponse = await fetch(
+        `${baseUrl}/api/v1/organizations/${organizationId}/orders`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', cookie },
+          body: JSON.stringify(orderPayload),
+        },
+      );
+      assert.equal(orderResponse.status, 202);
+      const webhookPayload = {
+        eventId: 'AUTH-WEBHOOK-001',
+        paymentId: 'AUTH-PAYMENT-001',
+        eventType: 'payment.succeeded',
+        signatureVerified: true,
+        processingStatus: 'PROCESSED',
+        receivedAt: '2026-10-28T12:00:00.000Z',
+      };
+      const webhookResponse = await fetch(
+        `${baseUrl}/api/v1/organizations/${organizationId}/webhooks`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', cookie },
+          body: JSON.stringify(webhookPayload),
+        },
+      );
+      assert.equal(webhookResponse.status, 202);
+      const duplicateWebhookResponse = await fetch(
+        `${baseUrl}/api/v1/organizations/${organizationId}/webhooks`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', cookie },
+          body: JSON.stringify(webhookPayload),
+        },
+      );
+      assert.equal(duplicateWebhookResponse.status, 202);
+      const conflictingWebhookResponse = await fetch(
+        `${baseUrl}/api/v1/organizations/${organizationId}/webhooks`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', cookie },
+          body: JSON.stringify({ ...webhookPayload, processingStatus: 'FAILED' }),
+        },
+      );
+      assert.equal(conflictingWebhookResponse.status, 409);
       const overrideResponse = await fetch(
         `${baseUrl}/api/v1/organizations/${otherOrganizationId}/payments/AUTH-PAYMENT-001/status`,
         { headers: { cookie } },
@@ -139,7 +193,7 @@ void test('PostgreSQL authentication sessions are tenant-scoped and revocable', 
       );
       assert.equal(investigationResponse.status, 201);
       const investigation = (await investigationResponse.json()) as { id: string; status: string };
-      assert.equal(investigation.status, 'PARTIAL');
+      assert.equal(investigation.status, 'COMPLETED');
 
       const retrievedInvestigation = await fetch(
         `${baseUrl}/api/v1/organizations/${organizationId}/investigations/${investigation.id}`,
@@ -179,10 +233,14 @@ void test('PostgreSQL authentication sessions are tenant-scoped and revocable', 
       (error: unknown) => error instanceof SessionError,
     );
   } finally {
+    await adminDatabase.query('DELETE FROM webhook_events WHERE organization_id = $1', [
+      organizationId,
+    ]);
     await adminDatabase.query('DELETE FROM investigations WHERE organization_id = $1', [
       organizationId,
     ]);
     await adminDatabase.query('DELETE FROM payments WHERE organization_id = $1', [organizationId]);
+    await adminDatabase.query('DELETE FROM orders WHERE organization_id = $1', [organizationId]);
     await adminDatabase.query('DELETE FROM users WHERE id = $1', [userId]);
     await adminDatabase.query('DELETE FROM organizations WHERE id IN ($1, $2)', [
       organizationId,

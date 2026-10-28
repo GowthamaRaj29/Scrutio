@@ -3,6 +3,7 @@ import { loadConfig } from './config/index.js';
 import { PaymentStatusCache } from './infrastructure/cache/payment-status-cache.js';
 import { PostgresPaymentRepository } from './infrastructure/repositories/postgres-payment-repository.js';
 import { PaymentStatusService } from './services/payment-status-service.js';
+import { IngestionService } from './services/ingestion-service.js';
 import { Database } from './infrastructure/postgres/database.js';
 import { AuthService } from './services/auth-service.js';
 import { InvestigationService } from './services/investigation-service.js';
@@ -25,7 +26,11 @@ const paymentStatusService = new PaymentStatusService(
   cache,
 );
 const investigationService = new InvestigationService(database);
+const ingestionService = new IngestionService(database, paymentStatusService);
 
-createApp({ paymentStatusService, authService, investigationService }).listen(config.port, () => {
-  console.log('Scrutio API listening on port', config.port);
-});
+createApp({ paymentStatusService, authService, investigationService, ingestionService }).listen(
+  config.port,
+  () => {
+    console.log('Scrutio API listening on port', config.port);
+  },
+);
