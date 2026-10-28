@@ -71,3 +71,16 @@ exact-decimal entry amount/currency, and at least one debit and credit journal l
 credit totals must balance exactly with the entry amount and use the same currency. PostgreSQL
 uniqueness prevents duplicate source postings; failed or conflicting transactions do not leave
 partial ledger history.
+
+Settlement records and payment relationships can be ingested through:
+
+```text
+POST /api/v1/organizations/:organizationId/settlements
+```
+
+The request includes a tenant-scoped `sourceEventId`, settlement amount/currency/status/date, and
+an optional list of payment IDs. Repeating an identical source event is idempotent; conflicting
+reuse is rejected. Payment links must belong to the authenticated organization and use the
+settlement currency. Because the current schema has no allocation amount or reconciliation-status
+field, this endpoint records observed provider relationships and does not claim financial
+reconciliation.

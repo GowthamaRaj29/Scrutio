@@ -229,6 +229,58 @@ void test('PostgreSQL authentication sessions are tenant-scoped and revocable', 
         },
       );
       assert.equal(unbalancedLedgerResponse.status, 409);
+      const settlementPayload = {
+        sourceEventId: 'AUTH-SETTLEMENT-001',
+        settlementId: 'AUTH-SETTLEMENT-001',
+        status: 'SETTLED',
+        amount: '10.00',
+        currency: 'INR',
+        settlementDate: '2026-10-28',
+        paymentIds: ['AUTH-PAYMENT-001'],
+      };
+      const settlementResponse = await fetch(
+        `${baseUrl}/api/v1/organizations/${organizationId}/settlements`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', cookie },
+          body: JSON.stringify(settlementPayload),
+        },
+      );
+      assert.equal(settlementResponse.status, 202);
+      const duplicateSettlementResponse = await fetch(
+        `${baseUrl}/api/v1/organizations/${organizationId}/settlements`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', cookie },
+          body: JSON.stringify(settlementPayload),
+        },
+      );
+      assert.equal(duplicateSettlementResponse.status, 202);
+      const mismatchedSettlementResponse = await fetch(
+        `${baseUrl}/api/v1/organizations/${organizationId}/settlements`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', cookie },
+          body: JSON.stringify({
+            ...settlementPayload,
+            sourceEventId: 'AUTH-SETTLEMENT-002',
+            currency: 'USD',
+          }),
+        },
+      );
+      assert.equal(mismatchedSettlementResponse.status, 409);
+      const conflictingSettlementResponse = await fetch(
+        `${baseUrl}/api/v1/organizations/${organizationId}/settlements`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', cookie },
+          body: JSON.stringify({
+            ...settlementPayload,
+            amount: '11.00',
+          }),
+        },
+      );
+      assert.equal(conflictingSettlementResponse.status, 409);
       const overrideResponse = await fetch(
         `${baseUrl}/api/v1/organizations/${otherOrganizationId}/payments/AUTH-PAYMENT-001/status`,
         { headers: { cookie } },
@@ -295,6 +347,12 @@ void test('PostgreSQL authentication sessions are tenant-scoped and revocable', 
       organizationId,
     ]);
     await adminDatabase.query('DELETE FROM journal_lines WHERE organization_id = $1', [
+      organizationId,
+    ]);
+    await adminDatabase.query('DELETE FROM settlement_payments WHERE organization_id = $1', [
+      organizationId,
+    ]);
+    await adminDatabase.query('DELETE FROM settlements WHERE organization_id = $1', [
       organizationId,
     ]);
     await adminDatabase.query('DELETE FROM ledger_entries WHERE organization_id = $1', [

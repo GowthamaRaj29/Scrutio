@@ -1,6 +1,7 @@
 import type {
   LedgerEntryIngestion,
   OrderIngestion,
+  SettlementIngestion,
   WebhookIngestion,
 } from '../domain/ingestion.js';
 import type { Database, Queryable } from '../infrastructure/postgres/database.js';
@@ -101,7 +102,7 @@ export class IngestionService {
         }
         const existing = await client.query<{ id: string }>(
           `SELECT id FROM ledger_entries
-          WHERE organization_id = $1 AND source_event_id = $2`,
+            WHERE organization_id = $1 AND source_event_id = $2`,
           [organizationId, input.sourceEventId],
         );
         if (existing.rows[0] !== undefined) {
@@ -109,10 +110,10 @@ export class IngestionService {
         }
         const entry = await client.query<{ id: string }>(
           `INSERT INTO ledger_entries (
-           organization_id, payment_id, account_id, entry_type, status,
-           amount, currency, posted_at, source_event_id
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-         RETURNING id`,
+             organization_id, payment_id, account_id, entry_type, status,
+             amount, currency, posted_at, source_event_id
+           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+           RETURNING id`,
           [
             organizationId,
             input.paymentId ?? null,
@@ -132,16 +133,16 @@ export class IngestionService {
         for (const line of input.lines) {
           await client.query(
             `INSERT INTO journal_lines (
-             organization_id, ledger_entry_id, direction, amount, currency
-           ) VALUES ($1, $2, $3, $4, $5)`,
+               organization_id, ledger_entry_id, direction, amount, currency
+             ) VALUES ($1, $2, $3, $4, $5)`,
             [organizationId, entryId, line.direction, line.amount, line.currency],
           );
         }
         if (input.paymentId !== undefined) {
           await client.query(
             `UPDATE payments
-              SET ledger_entry_present = true, version = version + 1, updated_at = NOW()
-            WHERE organization_id = $1 AND payment_id = $2`,
+                SET ledger_entry_present = true, version = version + 1, updated_at = NOW()
+              WHERE organization_id = $1 AND payment_id = $2`,
             [organizationId, input.paymentId],
           );
         }
@@ -154,6 +155,88 @@ export class IngestionService {
     }
     if (input.paymentId !== undefined) {
       this.paymentStatusService.invalidateAfterMutation(organizationId, input.paymentId);
+    }
+  }
+
+  public async ingestSettlement(organizationId: string, input: SettlementIngestion): Promise<void> {
+    try {
+      await this.database.withTransaction(organizationId, async (client) => {
+        const existing = await client.query<{
+          settlement_id: string;
+          status: SettlementIngestion['status'];
+          amount: string;
+          currency: string;
+          settlement_date: string;
+        }>(
+          `SELECT settlement_id, status, amount::text, currency, settlement_date::text
+             FROM settlements
+            WHERE organization_id = $1 AND source_event_id = $2`,
+          [organizationId, input.sourceEventId],
+        );
+        const row = existing.rows[0];
+        if (row !== undefined) {
+          if (
+            row.settlement_id !== input.settlementId ||
+            row.status !== input.status ||
+            row.amount !== input.amount ||
+            row.currency !== input.currency ||
+            row.settlement_date !== input.settlementDate
+          ) {
+            throw new IngestionConflictError(
+              'Settlement source event conflicts with an existing settlement',
+            );
+          }
+          return;
+        }
+        if (input.paymentIds.length > 0) {
+          const payments = await client.query<{ payment_id: string; currency: string }>(
+            `SELECT payment_id, currency
+               FROM payments
+              WHERE organization_id = $1 AND payment_id = ANY($2::varchar[])`,
+            [organizationId, input.paymentIds],
+          );
+          if (payments.rowCount !== input.paymentIds.length) {
+            throw new IngestionConflictError('Settlement references an unknown payment');
+          }
+          if (payments.rows.some((payment) => payment.currency !== input.currency)) {
+            throw new IngestionConflictError('Settlement currency does not match payment currency');
+          }
+        }
+        const settlement = await client.query<{ id: string }>(
+          `INSERT INTO settlements (
+             organization_id, settlement_id, status, amount, currency,
+             settlement_date, settled_at, utr_number, source_event_id
+           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+           RETURNING id`,
+          [
+            organizationId,
+            input.settlementId,
+            input.status,
+            input.amount,
+            input.currency,
+            input.settlementDate,
+            input.settledAt ?? null,
+            input.utrNumber ?? null,
+            input.sourceEventId,
+          ],
+        );
+        const settlementId = settlement.rows[0]?.id;
+        if (settlementId === undefined) {
+          throw new Error('Settlement creation returned no row');
+        }
+        for (const paymentId of input.paymentIds) {
+          await client.query(
+            `INSERT INTO settlement_payments (organization_id, settlement_id, payment_id)
+             VALUES ($1, $2, $3)`,
+            [organizationId, settlementId, paymentId],
+          );
+        }
+      });
+    } catch (error: unknown) {
+      if (isUniqueViolation(error)) {
+        throw new IngestionConflictError('Settlement source event already exists');
+      }
+      throw error;
     }
   }
 

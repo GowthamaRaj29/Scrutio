@@ -1,6 +1,6 @@
 # Implementation plan
 
-## Current phase: Tenant-safe ledger ingestion and reconciliation
+## Current phase: Settlement ingestion and payment relationship capture
 
 1. Establish reproducible package, TypeScript, lint, formatting, and test tooling. **Complete.**
 2. Verify the baseline with `npm run check`. **Complete.**
@@ -12,8 +12,9 @@
 8. Correct payment-status cache invalidation, tenant-safe single-flight behavior, bounded memory, and measurable local concurrency behavior. **Complete for the current single-process deployment model; cross-process invalidation remains a documented limitation.**
 9. Add tenant-authenticated, idempotent order and webhook ingestion. **Complete for the currently supported order/webhook slice; ledger, settlement, and provider ingestion remain next.**
 10. Add tenant-authenticated ledger entry ingestion with exact-decimal balance validation and source-event idempotency. **Complete for the existing ledger schema; settlement and richer reversal semantics remain next.**
-11. Add optional `@google/genai` integration only for Tier 3 synthesis, with strict schema/evidence validation.
-12. Add React web application and end-to-end workflows.
-13. Add CI gates, security scanning, migration verification, and performance measurements.
+11. Add tenant-authenticated settlement ingestion and payment-to-settlement relationship capture. **Complete for the schema-supported observed-link slice; allocation and reconciliation status remain blocked by missing schema semantics.**
+12. Add optional `@google/genai` integration only for Tier 3 synthesis, with strict schema/evidence validation.
+13. Add React web application and end-to-end workflows.
+14. Add CI gates, security scanning, migration verification, and performance measurements.
 
 No phase is complete until its feature evidence is recorded in `FEATURE_EVIDENCE.md`.

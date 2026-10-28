@@ -166,6 +166,22 @@ The PostgreSQL integration flow now verifies:
 The current schema models one ledger entry account plus journal lines. Multi-account posting,
 settlement reconciliation, and richer reversal workflows remain outside the verified slice.
 
+## Settlement ingestion verification — 2026-10-28
+
+The PostgreSQL integration flow verifies:
+
+- Authenticated settlement ingestion is tenant-scoped.
+- Settlement records can link only to payments in the same organization.
+- Settlement and payment currencies must match.
+- Identical source-event retries are idempotent.
+- Conflicting reuse of a source event is rejected.
+- Settlement creation and payment-link insertion share one transaction.
+- Failed validation does not leave a settlement or relationship rows.
+
+The current schema stores settlement totals and links but has no per-payment allocation amount or
+reconciliation-status field. The implementation therefore records observed provider relationships
+without claiming that a settlement is financially reconciled.
+
 ## Cache correctness and concurrency verification — 2026-10-28
 
 `npm run check` passed:

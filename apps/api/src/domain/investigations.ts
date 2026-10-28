@@ -53,6 +53,15 @@ export const investigationEvidenceSchema = z.object({
     })
     .nullable()
     .default(null),
+  settlement: z
+    .object({
+      settlementId: z.string().min(1).max(100),
+      status: z.enum(['PENDING', 'SETTLED', 'FAILED']),
+      amount: z.string().regex(/^\d+(\.\d{1,2})?$/),
+      currency: z.string().min(1).max(10),
+    })
+    .nullable()
+    .default(null),
 });
 
 export type InvestigationEvidence = z.infer<typeof investigationEvidenceSchema>;

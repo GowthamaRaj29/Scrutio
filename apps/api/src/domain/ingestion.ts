@@ -44,3 +44,17 @@ export const ledgerEntryIngestionSchema = z.object({
 });
 
 export type LedgerEntryIngestion = z.infer<typeof ledgerEntryIngestionSchema>;
+
+export const settlementIngestionSchema = z.object({
+  sourceEventId: z.string().min(1).max(150),
+  settlementId: z.string().min(1).max(100),
+  status: z.enum(['PENDING', 'SETTLED', 'FAILED']),
+  amount: z.string().regex(/^\d+(\.\d{1,2})?$/),
+  currency: z.string().min(1).max(10),
+  settlementDate: z.iso.date(),
+  settledAt: z.iso.datetime({ offset: true }).nullable().optional(),
+  utrNumber: z.string().min(1).max(150).nullable().optional(),
+  paymentIds: z.array(z.string().min(1).max(100)).max(100),
+});
+
+export type SettlementIngestion = z.infer<typeof settlementIngestionSchema>;

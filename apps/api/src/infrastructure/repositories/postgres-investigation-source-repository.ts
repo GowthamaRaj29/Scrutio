@@ -28,6 +28,10 @@ type SourceRow = {
   ledger_amount: string | null;
   ledger_currency: string | null;
   ledger_status: 'PENDING' | 'POSTED' | 'REVERSED' | null;
+  settlement_id: string | null;
+  settlement_status: 'PENDING' | 'SETTLED' | 'FAILED' | null;
+  settlement_amount: string | null;
+  settlement_currency: string | null;
 };
 
 export class InvestigationSourceRepository {
@@ -48,7 +52,9 @@ export class InvestigationSourceRepository {
               w.processing_status AS webhook_processing_status,
               w.received_at AS webhook_received_at,
               l.id AS ledger_entry_id, l.amount::text AS ledger_amount,
-              l.currency AS ledger_currency, l.status AS ledger_status
+              l.currency AS ledger_currency, l.status AS ledger_status,
+              s.settlement_id, s.status AS settlement_status,
+              s.amount::text AS settlement_amount, s.currency AS settlement_currency
          FROM payments p
          LEFT JOIN orders o
            ON o.organization_id = p.organization_id AND o.order_id = p.order_id
@@ -66,6 +72,16 @@ export class InvestigationSourceRepository {
             ORDER BY created_at DESC
             LIMIT 1
          ) l ON true
+         LEFT JOIN LATERAL (
+           SELECT s.settlement_id, s.status, s.amount, s.currency
+             FROM settlements s
+             JOIN settlement_payments sp
+               ON sp.organization_id = s.organization_id
+              AND sp.settlement_id = s.id
+            WHERE s.organization_id = p.organization_id AND sp.payment_id = p.payment_id
+            ORDER BY s.created_at DESC
+            LIMIT 1
+         ) s ON true
         WHERE p.organization_id = $1 AND p.payment_id = $2`,
       [organizationId, paymentId],
     );
@@ -119,6 +135,18 @@ export class InvestigationSourceRepository {
               amount: row.ledger_amount,
               currency: row.ledger_currency,
               status: row.ledger_status,
+            },
+      settlement:
+        row.settlement_id === null ||
+        row.settlement_status === null ||
+        row.settlement_amount === null ||
+        row.settlement_currency === null
+          ? null
+          : {
+              settlementId: row.settlement_id,
+              status: row.settlement_status,
+              amount: row.settlement_amount,
+              currency: row.settlement_currency,
             },
     });
   }
