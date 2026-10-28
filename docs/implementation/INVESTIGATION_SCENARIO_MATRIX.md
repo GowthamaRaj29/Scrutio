@@ -27,5 +27,9 @@ explicit optional evidence. Unsupported rules remain blocked rather than being i
 The operational data foundation now provides tables for orders, webhook events, ledger entries,
 journal lines, settlements, and persisted investigations. Their upstream ingestion and repositories
 are not yet connected to the evaluator, so rules R009-R010, R013-R019, R022-R063 remain
-`BLOCKED` or `IMPLEMENTED_NOT_VERIFIED` as documented here. Customer/payment-method aggregates,
-provider history, and pattern windows still require source semantics and repository work.
+`BLOCKED` or `IMPLEMENTED_NOT_VERIFIED` as documented here. Provider payment event history is now
+available as normalized, tenant-scoped evidence for the latest observed event. No provider-history
+rule is marked operational because the current rule engine has no provider-history rule with
+complete semantics. R060 remains blocked until `provider_reference_id` is represented on payment
+records and duplicate-reference evaluation is implemented and tested. Customer/payment-method
+aggregates and pattern windows still require source semantics and repository work.

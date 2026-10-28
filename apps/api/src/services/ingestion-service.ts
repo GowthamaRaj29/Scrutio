@@ -1,6 +1,7 @@
 import type {
   LedgerEntryIngestion,
   OrderIngestion,
+  ProviderPaymentEventIngestion,
   SettlementIngestion,
   WebhookIngestion,
 } from '../domain/ingestion.js';
@@ -186,6 +187,7 @@ export class IngestionService {
               'Settlement source event conflicts with an existing settlement',
             );
           }
+
           return;
         }
         if (input.paymentIds.length > 0) {
@@ -236,6 +238,73 @@ export class IngestionService {
       if (isUniqueViolation(error)) {
         throw new IngestionConflictError('Settlement source event already exists');
       }
+      throw error;
+    }
+  }
+
+  public async ingestProviderPaymentEvent(
+    organizationId: string,
+    input: ProviderPaymentEventIngestion,
+  ): Promise<boolean> {
+    try {
+      const created = await this.database.withTransaction(organizationId, async (client) => {
+        const result = await client.query(
+          `INSERT INTO provider_payment_events (
+             organization_id, payment_id, provider, provider_event_id,
+             provider_reference_id, observed_status, observed_at, amount, currency
+           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+           ON CONFLICT (organization_id, provider_event_id) DO NOTHING
+           RETURNING id`,
+          [
+            organizationId,
+            input.paymentId,
+            input.provider,
+            input.providerEventId,
+            input.providerReferenceId ?? null,
+            input.observedStatus,
+            input.observedAt,
+            input.amount ?? null,
+            input.currency ?? null,
+          ],
+        );
+        if (result.rowCount === 1) {
+          return true;
+        }
+        const existing = await client.query<{
+          payment_id: string;
+          provider: string;
+          provider_reference_id: string | null;
+          observed_status: string;
+          observed_at: Date;
+          amount: string | null;
+          currency: string | null;
+        }>(
+          `SELECT payment_id, provider, provider_reference_id, observed_status,
+                  observed_at, amount::text, currency
+             FROM provider_payment_events
+            WHERE organization_id = $1 AND provider_event_id = $2`,
+          [organizationId, input.providerEventId],
+        );
+        const row = existing.rows[0];
+        if (
+          row === undefined ||
+          row.payment_id !== input.paymentId ||
+          row.provider !== input.provider ||
+          row.provider_reference_id !== (input.providerReferenceId ?? null) ||
+          row.observed_status !== input.observedStatus ||
+          row.observed_at.toISOString() !== new Date(input.observedAt).toISOString() ||
+          row.amount !== (input.amount ?? null) ||
+          row.currency !== (input.currency ?? null)
+        ) {
+          throw new IngestionConflictError('Provider event conflicts with an existing event');
+        }
+        return false;
+      });
+      if (created) {
+        this.paymentStatusService.invalidateAfterMutation(organizationId, input.paymentId);
+      }
+      return created;
+    } catch (error: unknown) {
       throw error;
     }
   }

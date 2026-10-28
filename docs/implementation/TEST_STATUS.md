@@ -182,6 +182,21 @@ The current schema stores settlement totals and links but has no per-payment all
 reconciliation-status field. The implementation therefore records observed provider relationships
 without claiming that a settlement is financially reconciled.
 
+## Provider history verification — 2026-10-28
+
+The PostgreSQL integration flow verifies:
+
+- Authenticated provider payment-event ingestion is tenant-scoped.
+- Provider event identifiers are preserved with their observed status and timestamp.
+- Repeated provider event IDs are rejected by the database-backed uniqueness constraint.
+- Payment references must belong to the authenticated organization through the composite foreign key.
+- Provider history is loaded into normalized investigation evidence from PostgreSQL.
+- Provider-event writes invalidate the payment-status cache only after commit.
+
+No external provider calls, polling worker, raw provider payload storage, or AI processing were
+introduced. The existing specification's R060 duplicate `provider_reference_id` rule remains
+blocked because the current payment schema does not yet store that field on payments.
+
 ## Cache correctness and concurrency verification — 2026-10-28
 
 `npm run check` passed:

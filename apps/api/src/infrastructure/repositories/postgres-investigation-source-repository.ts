@@ -32,6 +32,11 @@ type SourceRow = {
   settlement_status: 'PENDING' | 'SETTLED' | 'FAILED' | null;
   settlement_amount: string | null;
   settlement_currency: string | null;
+  provider_name: string | null;
+  provider_event_id: string | null;
+  provider_reference_id: string | null;
+  provider_observed_status: string | null;
+  provider_observed_at: Date | null;
 };
 
 export class InvestigationSourceRepository {
@@ -54,7 +59,10 @@ export class InvestigationSourceRepository {
               l.id AS ledger_entry_id, l.amount::text AS ledger_amount,
               l.currency AS ledger_currency, l.status AS ledger_status,
               s.settlement_id, s.status AS settlement_status,
-              s.amount::text AS settlement_amount, s.currency AS settlement_currency
+              s.amount::text AS settlement_amount, s.currency AS settlement_currency,
+              pe.provider AS provider_name, pe.provider_event_id,
+              pe.provider_reference_id, pe.observed_status AS provider_observed_status,
+              pe.observed_at AS provider_observed_at
          FROM payments p
          LEFT JOIN orders o
            ON o.organization_id = p.organization_id AND o.order_id = p.order_id
@@ -82,6 +90,14 @@ export class InvestigationSourceRepository {
             ORDER BY s.created_at DESC
             LIMIT 1
          ) s ON true
+          LEFT JOIN LATERAL (
+            SELECT provider, provider_event_id, provider_reference_id,
+                   observed_status, observed_at
+              FROM provider_payment_events
+             WHERE organization_id = p.organization_id AND payment_id = p.payment_id
+             ORDER BY observed_at DESC
+             LIMIT 1
+          ) pe ON true
         WHERE p.organization_id = $1 AND p.payment_id = $2`,
       [organizationId, paymentId],
     );
@@ -147,6 +163,19 @@ export class InvestigationSourceRepository {
               status: row.settlement_status,
               amount: row.settlement_amount,
               currency: row.settlement_currency,
+            },
+      providerHistory:
+        row.provider_name === null ||
+        row.provider_event_id === null ||
+        row.provider_observed_status === null ||
+        row.provider_observed_at === null
+          ? null
+          : {
+              provider: row.provider_name,
+              providerEventId: row.provider_event_id,
+              providerReferenceId: row.provider_reference_id,
+              observedStatus: row.provider_observed_status,
+              observedAt: row.provider_observed_at.toISOString(),
             },
     });
   }

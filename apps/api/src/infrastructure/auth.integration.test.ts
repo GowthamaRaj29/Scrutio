@@ -281,6 +281,34 @@ void test('PostgreSQL authentication sessions are tenant-scoped and revocable', 
         },
       );
       assert.equal(conflictingSettlementResponse.status, 409);
+      const providerEventPayload = {
+        provider: 'test-provider',
+        providerEventId: 'AUTH-PROVIDER-EVENT-001',
+        paymentId: 'AUTH-PAYMENT-001',
+        providerReferenceId: 'AUTH-PROVIDER-REF-001',
+        observedStatus: 'SUCCESS',
+        observedAt: '2026-10-28T12:02:00.000Z',
+        amount: '10.00',
+        currency: 'INR',
+      };
+      const providerEventResponse = await fetch(
+        `${baseUrl}/api/v1/organizations/${organizationId}/provider/payment-events`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', cookie },
+          body: JSON.stringify(providerEventPayload),
+        },
+      );
+      assert.equal(providerEventResponse.status, 202);
+      const duplicateProviderEventResponse = await fetch(
+        `${baseUrl}/api/v1/organizations/${organizationId}/provider/payment-events`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', cookie },
+          body: JSON.stringify(providerEventPayload),
+        },
+      );
+      assert.equal(duplicateProviderEventResponse.status, 202);
       const overrideResponse = await fetch(
         `${baseUrl}/api/v1/organizations/${otherOrganizationId}/payments/AUTH-PAYMENT-001/status`,
         { headers: { cookie } },
@@ -350,6 +378,9 @@ void test('PostgreSQL authentication sessions are tenant-scoped and revocable', 
       organizationId,
     ]);
     await adminDatabase.query('DELETE FROM settlement_payments WHERE organization_id = $1', [
+      organizationId,
+    ]);
+    await adminDatabase.query('DELETE FROM provider_payment_events WHERE organization_id = $1', [
       organizationId,
     ]);
     await adminDatabase.query('DELETE FROM settlements WHERE organization_id = $1', [

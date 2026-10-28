@@ -58,3 +58,20 @@ export const settlementIngestionSchema = z.object({
 });
 
 export type SettlementIngestion = z.infer<typeof settlementIngestionSchema>;
+
+export const providerPaymentEventIngestionSchema = z.object({
+  provider: z.string().min(1).max(100),
+  providerEventId: z.string().min(1).max(255),
+  paymentId: z.string().min(1).max(100),
+  providerReferenceId: z.string().min(1).max(255).nullable().optional(),
+  observedStatus: z.string().min(1).max(50),
+  observedAt: z.iso.datetime({ offset: true }),
+  amount: z
+    .string()
+    .regex(/^\d+(\.\d{1,2})?$/)
+    .nullable()
+    .optional(),
+  currency: z.string().min(1).max(10).nullable().optional(),
+});
+
+export type ProviderPaymentEventIngestion = z.infer<typeof providerPaymentEventIngestionSchema>;

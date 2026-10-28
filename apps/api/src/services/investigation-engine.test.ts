@@ -31,6 +31,7 @@ function evidence(
     webhook: null,
     ledger: null,
     settlement: null,
+    providerHistory: null,
   };
 }
 

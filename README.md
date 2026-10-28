@@ -84,3 +84,14 @@ reuse is rejected. Payment links must belong to the authenticated organization a
 settlement currency. Because the current schema has no allocation amount or reconciliation-status
 field, this endpoint records observed provider relationships and does not claim financial
 reconciliation.
+
+Provider payment events can be recorded through:
+
+```text
+POST /api/v1/organizations/:organizationId/provider/payment-events
+```
+
+The event includes a provider name, provider event ID, payment ID, observed status, and timestamp,
+with optional provider reference, amount, and currency. Events are tenant-scoped and idempotent by
+provider event ID. The endpoint stores observed provider history only; it does not call a provider,
+poll externally, store raw provider payloads, or infer reconciliation.

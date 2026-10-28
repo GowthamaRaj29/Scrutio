@@ -62,6 +62,16 @@ export const investigationEvidenceSchema = z.object({
     })
     .nullable()
     .default(null),
+  providerHistory: z
+    .object({
+      provider: z.string().min(1).max(100),
+      providerEventId: z.string().min(1).max(255),
+      providerReferenceId: z.string().min(1).max(255).nullable(),
+      observedStatus: z.string().min(1).max(50),
+      observedAt: z.iso.datetime({ offset: true }),
+    })
+    .nullable()
+    .default(null),
 });
 
 export type InvestigationEvidence = z.infer<typeof investigationEvidenceSchema>;

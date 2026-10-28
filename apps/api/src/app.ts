@@ -3,6 +3,7 @@ import { z } from 'zod';
 import {
   ledgerEntryIngestionSchema,
   orderIngestionSchema,
+  providerPaymentEventIngestionSchema,
   settlementIngestionSchema,
   webhookIngestionSchema,
 } from './domain/ingestion.js';
@@ -97,6 +98,34 @@ export function createApp(dependencies: AppDependencies): express.Express {
       response.status(500).json({ error: 'Internal server error' });
     }
   });
+
+  app.post(
+    '/api/v1/organizations/:organizationId/provider/payment-events',
+    requireAuthentication(authService),
+    async (request: Request, response: Response): Promise<void> => {
+      const path = investigationPathSchema.safeParse(request.params);
+      const body = providerPaymentEventIngestionSchema.safeParse(request.body);
+      const user = request.authenticatedUser;
+      if (!path.success || !body.success) {
+        response.status(400).json({ error: 'Invalid provider event request' });
+        return;
+      }
+      if (user === undefined || user.organizationId !== path.data.organizationId) {
+        response.status(403).json({ error: 'Forbidden' });
+        return;
+      }
+      try {
+        await ingestionService.ingestProviderPaymentEvent(user.organizationId, body.data);
+        response.status(202).json({ status: 'accepted' });
+      } catch (error: unknown) {
+        if (error instanceof IngestionConflictError) {
+          response.status(409).json({ error: error.message });
+          return;
+        }
+        response.status(500).json({ error: 'Provider event ingestion failed' });
+      }
+    },
+  );
 
   app.post(
     '/api/v1/organizations/:organizationId/settlements',
