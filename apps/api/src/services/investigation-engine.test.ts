@@ -61,6 +61,229 @@ void test('SC-01 detects a successful payment with a pending order and no ledger
   assert.equal(result.findings[0]?.ruleVersion, '2026-10-28.v1');
 });
 
+void test('POM rules honor exact amount tolerance and required states', () => {
+  const engine = new InvestigationEngine();
+  const order = { orderId: 'ORD-20001', status: 'PAID', amount: '1000.00', currency: 'INR' };
+
+  const overOnePaise = engine.evaluate(
+    { ...evidence(), order, payment: { ...evidence().payment, amount: '1000.01' } },
+    evaluatedAt,
+  );
+  assert.equal(overOnePaise.evaluations.find((item) => item.ruleId === 'R006')?.status, 'NO_MATCH');
+
+  const overTwoPaise = engine.evaluate(
+    { ...evidence(), order, payment: { ...evidence().payment, amount: '1000.02' } },
+    evaluatedAt,
+  );
+  assert.equal(overTwoPaise.evaluations.find((item) => item.ruleId === 'R006')?.status, 'MATCH');
+
+  const underOnePaise = engine.evaluate(
+    { ...evidence(), order, payment: { ...evidence().payment, amount: '999.99' } },
+    evaluatedAt,
+  );
+  assert.equal(
+    underOnePaise.evaluations.find((item) => item.ruleId === 'R007')?.status,
+    'NO_MATCH',
+  );
+
+  const underTwoPaise = engine.evaluate(
+    { ...evidence(), order, payment: { ...evidence().payment, amount: '999.98' } },
+    evaluatedAt,
+  );
+  assert.equal(underTwoPaise.evaluations.find((item) => item.ruleId === 'R007')?.status, 'MATCH');
+
+  const failedUnderpayment = engine.evaluate(
+    {
+      ...evidence({ status: 'FAILED' }),
+      order,
+      payment: { ...evidence({ status: 'FAILED' }).payment, amount: '900.00' },
+    },
+    evaluatedAt,
+  );
+  assert.equal(
+    failedUnderpayment.evaluations.find((item) => item.ruleId === 'R007')?.status,
+    'NO_MATCH',
+  );
+
+  const missingOrder = engine.evaluate({ ...evidence(), order: null }, evaluatedAt);
+  assert.equal(
+    missingOrder.evaluations.find((item) => item.ruleId === 'R006')?.status,
+    'INSUFFICIENT_EVIDENCE',
+  );
+  assert.equal(
+    missingOrder.evaluations.find((item) => item.ruleId === 'R007')?.status,
+    'INSUFFICIENT_EVIDENCE',
+  );
+});
+
+void test('POM, webhook, and settlement rules cover direct positive and negative states', () => {
+  const engine = new InvestigationEngine();
+  const paidOrder = {
+    orderId: 'ORD-20001',
+    status: 'PAID',
+    amount: '1000.00',
+    currency: 'INR',
+  };
+  const webhook = {
+    eventId: 'WHK-DIRECT',
+    paymentId: 'PAY-10001',
+    signatureVerified: true,
+    processingStatus: 'RECEIVED' as const,
+    receivedAt: '2026-10-28T11:55:00.000Z',
+  };
+  const ledger = {
+    entryId: '11111111-1111-4111-8111-111111111111',
+    amount: '1000.00',
+    currency: 'INR',
+    status: 'POSTED' as const,
+    createdAt: '2026-10-28T11:00:00.000Z',
+  };
+  const settled = {
+    settlementId: 'STL-1',
+    status: 'SETTLED' as const,
+    amount: '1000.00',
+    currency: 'INR',
+    settledAt: '2026-10-28T12:00:00.000Z',
+  };
+
+  const contradictoryOrder = engine.evaluate(
+    { ...evidence(), order: { ...paidOrder, status: 'PAYMENT_FAILED' } },
+    evaluatedAt,
+  );
+  assert.equal(
+    contradictoryOrder.evaluations.find((item) => item.ruleId === 'R002')?.status,
+    'MATCH',
+  );
+  assert.equal(
+    contradictoryOrder.evaluations.find((item) => item.ruleId === 'R003')?.status,
+    'NO_MATCH',
+  );
+
+  const cancelledOrder = engine.evaluate(
+    { ...evidence(), order: { ...paidOrder, status: 'CANCELLED' } },
+    evaluatedAt,
+  );
+  assert.equal(cancelledOrder.evaluations.find((item) => item.ruleId === 'R003')?.status, 'MATCH');
+  assert.equal(
+    cancelledOrder.evaluations.find((item) => item.ruleId === 'R002')?.status,
+    'NO_MATCH',
+  );
+
+  const currencyMismatch = engine.evaluate(
+    { ...evidence(), order: { ...paidOrder, currency: 'USD' } },
+    evaluatedAt,
+  );
+  assert.equal(
+    currencyMismatch.evaluations.find((item) => item.ruleId === 'R008')?.status,
+    'MATCH',
+  );
+  assert.equal(
+    engine
+      .evaluate({ ...evidence(), order: paidOrder }, evaluatedAt)
+      .evaluations.find((item) => item.ruleId === 'R008')?.status,
+    'NO_MATCH',
+  );
+
+  const delayedWebhook = engine.evaluate({ ...evidence(), webhook }, evaluatedAt);
+  assert.equal(delayedWebhook.evaluations.find((item) => item.ruleId === 'R011')?.status, 'MATCH');
+  assert.equal(
+    engine
+      .evaluate(
+        { ...evidence(), webhook: { ...webhook, processingStatus: 'PROCESSED' } },
+        evaluatedAt,
+      )
+      .evaluations.find((item) => item.ruleId === 'R011')?.status,
+    'NO_MATCH',
+  );
+
+  const settledPending = engine.evaluate(
+    { ...evidence({ status: 'PENDING' }), settlement: settled },
+    evaluatedAt,
+  );
+  assert.equal(settledPending.evaluations.find((item) => item.ruleId === 'R033')?.status, 'MATCH');
+  assert.equal(
+    engine
+      .evaluate({ ...evidence({ status: 'SUCCESS' }), settlement: settled }, evaluatedAt)
+      .evaluations.find((item) => item.ruleId === 'R033')?.status,
+    'NO_MATCH',
+  );
+
+  assert.equal(
+    engine
+      .evaluate({ ...evidence(), settlement: { ...settled, currency: 'USD' } }, evaluatedAt)
+      .evaluations.find((item) => item.ruleId === 'R036')?.status,
+    'MATCH',
+  );
+  assert.equal(
+    engine
+      .evaluate({ ...evidence(), settlement: settled }, evaluatedAt)
+      .evaluations.find((item) => item.ruleId === 'R036')?.status,
+    'NO_MATCH',
+  );
+
+  const downstreamPending = engine.evaluate(
+    {
+      ...evidence(),
+      order: { ...paidOrder, status: 'PENDING' },
+      webhook: { ...webhook, processingStatus: 'PROCESSED' },
+      ledger,
+    },
+    evaluatedAt,
+  );
+  assert.equal(
+    downstreamPending.evaluations.find((item) => item.ruleId === 'R042')?.status,
+    'MATCH',
+  );
+  assert.equal(
+    engine
+      .evaluate(
+        {
+          ...evidence(),
+          order: paidOrder,
+          webhook: { ...webhook, processingStatus: 'PROCESSED' },
+          ledger,
+        },
+        evaluatedAt,
+      )
+      .evaluations.find((item) => item.ruleId === 'R042')?.status,
+    'NO_MATCH',
+  );
+
+  const preSettlementComplete = engine.evaluate(
+    { ...evidence(), order: paidOrder, ledger },
+    evaluatedAt,
+  );
+  assert.equal(
+    preSettlementComplete.evaluations.find((item) => item.ruleId === 'R044')?.status,
+    'MATCH',
+  );
+  assert.equal(
+    engine
+      .evaluate({ ...evidence(), order: paidOrder, ledger, settlement: settled }, evaluatedAt)
+      .evaluations.find((item) => item.ruleId === 'R044')?.status,
+    'NO_MATCH',
+  );
+
+  const missing = engine.evaluate({ ...evidence(), order: null }, evaluatedAt);
+  for (const ruleId of [
+    'R002',
+    'R003',
+    'R006',
+    'R007',
+    'R008',
+    'R011',
+    'R033',
+    'R036',
+    'R042',
+    'R044',
+  ]) {
+    assert.equal(
+      missing.evaluations.find((item) => item.ruleId === ruleId)?.status,
+      'INSUFFICIENT_EVIDENCE',
+    );
+  }
+});
+
 void test('R025 uses evaluation time and R026 distinguishes missing from balanced journals', () => {
   const engine = new InvestigationEngine();
   const pending = {

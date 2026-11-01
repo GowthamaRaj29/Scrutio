@@ -199,13 +199,13 @@ export class InvestigationEngine {
         'R006',
         order === null
           ? 'INSUFFICIENT_EVIDENCE'
-          : Number(payment.amount) > Number(order.amount)
+          : moneyToCents(payment.amount) - moneyToCents(order.amount) > 1n
             ? 'MATCH'
             : 'NO_MATCH',
         order === null
           ? 'Order evidence is unavailable; payment and order amounts cannot be compared.'
-          : Number(payment.amount) > Number(order.amount)
-            ? 'Payment amount exceeds the order amount.'
+          : moneyToCents(payment.amount) - moneyToCents(order.amount) > 1n
+            ? 'Payment amount exceeds the order amount by more than INR 0.01.'
             : 'Payment amount does not exceed the order amount.',
         ['payment.amount', 'order.amount'],
       ),
@@ -213,15 +213,17 @@ export class InvestigationEngine {
         'R007',
         order === null
           ? 'INSUFFICIENT_EVIDENCE'
-          : Number(payment.amount) < Number(order.amount)
+          : payment.status === 'SUCCESS' &&
+              moneyToCents(order.amount) - moneyToCents(payment.amount) > 1n
             ? 'MATCH'
             : 'NO_MATCH',
         order === null
           ? 'Order evidence is unavailable; payment and order amounts cannot be compared.'
-          : Number(payment.amount) < Number(order.amount)
-            ? 'Payment amount is below the order amount.'
+          : payment.status === 'SUCCESS' &&
+              moneyToCents(order.amount) - moneyToCents(payment.amount) > 1n
+            ? 'Payment amount is below the order amount by more than INR 0.01.'
             : 'Payment amount is not below the order amount.',
-        ['payment.amount', 'order.amount'],
+        ['payment.status', 'payment.amount', 'order.amount'],
       ),
       evaluateRule(
         'R008',

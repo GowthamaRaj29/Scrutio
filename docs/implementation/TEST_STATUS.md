@@ -293,7 +293,22 @@ No code or schema changes were made for this audit.
   and no authoritative missing-settlement threshold exists.
 
 No tests were added because implementing these rules would require inventing policy or substituting
-unrelated timestamps. Coverage remains 23 of 63 directly verified rules.
+unrelated timestamps. Coverage remains 23 of 63 directly verified rules before this boundary-test slice.
+
+## Boundary and evidence-quality review — 2026-11-01
+
+The evaluator review added direct coverage for ten previously under-tested rules:
+
+- R006/R007 use exact integer-cent arithmetic. A difference of exactly INR 0.01
+  produces `NO_MATCH`; a larger difference produces `MATCH`. R007 also requires
+  `payment.status = SUCCESS`.
+- R002/R003/R008 cover direct payment/order contradictions and currency mismatch.
+- R011 covers a verified delayed webhook and a processed-webhook negative.
+- R033/R036/R042/R044 cover positive, negative, and insufficient-evidence outcomes.
+- The expanded unit suite passed **34 tests**.
+
+This is evaluator-level verification. It does not claim new live PostgreSQL evidence coverage;
+tenant-scoped integration validation remains a separate follow-up.
 
 ## Cache correctness and concurrency verification — 2026-10-28
 
