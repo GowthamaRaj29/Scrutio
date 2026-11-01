@@ -89,6 +89,21 @@ void test('PostgreSQL investigation evidence remains tenant-scoped for ledger an
        ON CONFLICT (organization_id, id) DO NOTHING`,
       [accountId, organizationId],
     );
+    await adminDatabase.query(
+      `INSERT INTO payments
+         (organization_id, payment_id, amount, status, order_status,
+          webhook_processed, ledger_entry_present)
+       VALUES ($1, 'RULE-PENDING-LEDGER', 50.00, 'SUCCESS', 'PAID', true, true)
+       ON CONFLICT (organization_id, payment_id) DO NOTHING`,
+      [organizationId],
+    );
+    await adminDatabase.query(
+      `INSERT INTO ledger_entries
+         (organization_id, payment_id, account_id, entry_type, status, amount, currency, created_at)
+       VALUES ($1, 'RULE-PENDING-LEDGER', $2, 'PAYMENT_CREDIT', 'PENDING', 50.00, 'INR',
+               '2026-10-28T10:00:00Z')`,
+      [organizationId, accountId],
+    );
     const ledgerResult = await adminDatabase.query<{ id: string }>(
       `INSERT INTO ledger_entries
          (organization_id, payment_id, account_id, entry_type, status, amount, currency)
@@ -109,6 +124,21 @@ void test('PostgreSQL investigation evidence remains tenant-scoped for ledger an
        (organization_id, payment_id, account_id, entry_type, status, amount, currency)
        VALUES ($1, 'RULE-PAYMENT-001', $2, 'REFUND_DEBIT', 'POSTED', 10.00, 'INR')`,
       [organizationId, accountId],
+    );
+    const journalEntry = await adminDatabase.query<{ id: string }>(
+      `INSERT INTO ledger_entries
+         (organization_id, payment_id, account_id, entry_type, status, amount, currency)
+       VALUES ($1, 'RULE-PAYMENT-001', $2, 'JOURNAL_TEST', 'POSTED', 100.00, 'INR')
+       RETURNING id`,
+      [organizationId, accountId],
+    );
+    const journalEntryId = journalEntry.rows[0]?.id;
+    assert.ok(journalEntryId);
+    await adminDatabase.query(
+      `INSERT INTO journal_lines
+         (organization_id, ledger_entry_id, direction, amount, currency)
+       VALUES ($1, $2, 'DEBIT', 100.00, 'INR'), ($1, $2, 'CREDIT', 99.99, 'INR')`,
+      [organizationId, journalEntryId],
     );
     await adminDatabase.query(
       `INSERT INTO settlements
@@ -175,6 +205,23 @@ void test('PostgreSQL investigation evidence remains tenant-scoped for ledger an
     assert.equal(
       result.findings.find((finding) => finding.ruleId === 'R043')?.severity,
       'CRITICAL',
+    );
+    assert.equal(
+      result.findings.find((finding) => finding.ruleId === 'R026')?.severity,
+      'CRITICAL',
+    );
+    const pendingEvidence = await appDatabase.withTransaction(organizationId, (client) =>
+      new InvestigationSourceRepository(client, {
+        burstFailureWindowHours: 1,
+        webhookStormWindowMinutes: 10,
+      }).findEvidence(organizationId, 'RULE-PENDING-LEDGER', '2026-10-28T12:00:00.000Z'),
+    );
+    assert.ok(pendingEvidence);
+    assert.equal(
+      new InvestigationEngine()
+        .evaluate(pendingEvidence, '2026-10-28T12:00:00.000Z')
+        .findings.find((finding) => finding.ruleId === 'R025')?.severity,
+      'MEDIUM',
     );
     assert.equal(
       result.findings.some((finding) => finding.ruleId === 'R036'),

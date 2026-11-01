@@ -52,6 +52,7 @@ export const investigationEvidenceSchema = z.object({
       amount: z.string().regex(/^\d+(\.\d{1,2})?$/),
       currency: z.string().min(1).max(10),
       status: z.enum(['PENDING', 'POSTED', 'REVERSED']),
+      createdAt: z.iso.datetime({ offset: true }),
     })
     .nullable()
     .default(null),
@@ -75,6 +76,17 @@ export const investigationEvidenceSchema = z.object({
   paymentCreditCount: z.number().int().nonnegative().nullable().default(null),
   paymentCreditAmountMismatchCount: z.number().int().nonnegative().nullable().default(null),
   refundDebitExists: z.boolean().nullable().default(null),
+  journalLineCount: z.number().int().nonnegative().nullable().default(null),
+  journalDebitAmount: z
+    .string()
+    .regex(/^\d+(\.\d{1,2})?$/)
+    .nullable()
+    .default(null),
+  journalCreditAmount: z
+    .string()
+    .regex(/^\d+(\.\d{1,2})?$/)
+    .nullable()
+    .default(null),
   settlementCount: z.number().int().nonnegative().default(0),
   burstFailedPaymentCount: z.number().int().nonnegative().nullable().default(null),
   failureRateFailedPaymentCount: z.number().int().nonnegative().nullable().default(null),

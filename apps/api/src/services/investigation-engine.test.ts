@@ -41,6 +41,9 @@ function evidence(
     paymentCreditCount: null,
     paymentCreditAmountMismatchCount: null,
     refundDebitExists: null,
+    journalLineCount: null,
+    journalDebitAmount: null,
+    journalCreditAmount: null,
     settlementCount: 0,
     burstFailedPaymentCount: null,
     failureRateFailedPaymentCount: null,
@@ -56,6 +59,73 @@ void test('SC-01 detects a successful payment with a pending order and no ledger
     ['R001', 'R021'],
   );
   assert.equal(result.findings[0]?.ruleVersion, '2026-10-28.v1');
+});
+
+void test('R025 uses evaluation time and R026 distinguishes missing from balanced journals', () => {
+  const engine = new InvestigationEngine();
+  const pending = {
+    ...evidence(),
+    ledger: {
+      entryId: '11111111-1111-4111-8111-111111111111',
+      amount: '1000.00',
+      currency: 'INR',
+      status: 'PENDING' as const,
+      createdAt: '2026-10-28T10:59:59.000Z',
+    },
+  };
+  assert.equal(
+    engine.evaluate(pending, evaluatedAt).evaluations.find((item) => item.ruleId === 'R025')
+      ?.status,
+    'MATCH',
+  );
+  const atBoundary = engine.evaluate(
+    { ...pending, ledger: { ...pending.ledger, createdAt: '2026-10-28T11:00:00.000Z' } },
+    evaluatedAt,
+  );
+  assert.equal(atBoundary.evaluations.find((item) => item.ruleId === 'R025')?.status, 'NO_MATCH');
+  const balanced = engine.evaluate(
+    {
+      ...evidence(),
+      ledger: {
+        entryId: '11111111-1111-4111-8111-111111111111',
+        amount: '100.00',
+        currency: 'INR',
+        status: 'POSTED',
+        createdAt: '2026-10-28T11:00:00.000Z',
+      },
+      journalLineCount: 2,
+      journalDebitAmount: '100.00',
+      journalCreditAmount: '100.00',
+    },
+    evaluatedAt,
+  );
+  assert.equal(balanced.evaluations.find((item) => item.ruleId === 'R026')?.status, 'NO_MATCH');
+  const imbalanced = engine.evaluate(
+    {
+      ...evidence(),
+      ledger: {
+        entryId: '11111111-1111-4111-8111-111111111111',
+        amount: '100.00',
+        currency: 'INR',
+        status: 'POSTED',
+        createdAt: '2026-10-28T11:00:00.000Z',
+      },
+      journalLineCount: 2,
+      journalDebitAmount: '100.00',
+      journalCreditAmount: '99.99',
+    },
+    evaluatedAt,
+  );
+  assert.equal(imbalanced.evaluations.find((item) => item.ruleId === 'R026')?.status, 'MATCH');
+  const missing = engine.evaluate(evidence(), evaluatedAt);
+  assert.equal(
+    missing.evaluations.find((item) => item.ruleId === 'R025')?.status,
+    'INSUFFICIENT_EVIDENCE',
+  );
+  assert.equal(
+    missing.evaluations.find((item) => item.ruleId === 'R026')?.status,
+    'INSUFFICIENT_EVIDENCE',
+  );
 });
 
 void test('R039 requires an unprocessed webhook and preserves R021 independence', () => {
@@ -185,6 +255,7 @@ void test('evidence-query rules evaluate ledger, settlement, and downstream stat
     amount: '1000.00',
     currency: 'INR',
     status: 'POSTED' as const,
+    createdAt: '2026-10-28T11:00:00.000Z',
   };
   const webhook = {
     eventId: 'WHK-DOWNSTREAM',
@@ -320,6 +391,7 @@ void test('ledger classification rules use entry types and preserve independent 
     amount: '1000.00',
     currency: 'INR',
     status: 'POSTED' as const,
+    createdAt: '2026-10-28T11:00:00.000Z',
   };
   const base = {
     ...evidence(),

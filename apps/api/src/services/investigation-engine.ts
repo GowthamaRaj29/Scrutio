@@ -111,6 +111,11 @@ export class InvestigationEngine {
     const paymentCreditCount = evidence.paymentCreditCount;
     const paymentCreditAmountMismatchCount = evidence.paymentCreditAmountMismatchCount;
     const refundDebitExists = evidence.refundDebitExists;
+    const journalLineCount = evidence.journalLineCount;
+    const journalDebitAmount = evidence.journalDebitAmount;
+    const journalCreditAmount = evidence.journalCreditAmount;
+    const ledgerAgeMinutes =
+      evidence.ledger === null ? null : minutesSince(evidence.ledger.createdAt, evaluatedAt);
     const settlementTimestamp = timestampOrNull(evidence.settlement?.settledAt);
     const lateSettlementWebhook =
       webhook !== null &&
@@ -363,6 +368,42 @@ export class InvestigationEngine {
         ['payment.amount', 'ledger.paymentCreditAmountMismatchCount'],
       ),
       evaluateRule(
+        'R025',
+        evidence.ledger === null || ledgerAgeMinutes === null
+          ? 'INSUFFICIENT_EVIDENCE'
+          : evidence.ledger.status === 'PENDING' && ledgerAgeMinutes > 60
+            ? 'MATCH'
+            : 'NO_MATCH',
+        evidence.ledger === null || ledgerAgeMinutes === null
+          ? 'Ledger evidence is unavailable; pending-entry age cannot be evaluated.'
+          : evidence.ledger.status === 'PENDING' && ledgerAgeMinutes > 60
+            ? 'A ledger entry has remained pending for more than one hour.'
+            : 'No pending ledger entry exceeds the one-hour age threshold.',
+        ['ledger.createdAt', 'ledger.status'],
+      ),
+      evaluateRule(
+        'R026',
+        evidence.ledger === null ||
+          journalLineCount === null ||
+          journalDebitAmount === null ||
+          journalCreditAmount === null ||
+          journalLineCount === 0
+          ? 'INSUFFICIENT_EVIDENCE'
+          : moneyToCents(journalDebitAmount) !== moneyToCents(journalCreditAmount)
+            ? 'MATCH'
+            : 'NO_MATCH',
+        evidence.ledger === null ||
+          journalLineCount === null ||
+          journalDebitAmount === null ||
+          journalCreditAmount === null ||
+          journalLineCount === 0
+          ? 'Journal-line evidence is unavailable; debit and credit balance cannot be evaluated.'
+          : moneyToCents(journalDebitAmount) !== moneyToCents(journalCreditAmount)
+            ? 'Journal debit and credit totals are imbalanced.'
+            : 'Journal debit and credit totals are balanced.',
+        ['ledger.entryId', 'journal.debitAmount', 'journal.creditAmount'],
+      ),
+      evaluateRule(
         'R029',
         refundDebitExists === null
           ? 'INSUFFICIENT_EVIDENCE'
@@ -602,6 +643,7 @@ export class InvestigationEngine {
       'R022',
       'R023',
       'R024',
+      'R026',
       'R033',
       'R035',
       'R037',

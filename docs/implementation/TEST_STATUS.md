@@ -266,6 +266,21 @@ The R023/R029/R043 slice passed:
 
 Verified coverage is now 21 of 63 rules; no claim of full catalogue coverage is made.
 
+## Ledger age and journal verification — 2026-11-01
+
+The R025/R026 slice passed:
+
+- R025 uses `ledger_entries.created_at` and the investigation evaluation timestamp.
+  Exactly one hour does not match; an older pending entry matches with MEDIUM severity.
+- R026 aggregates journal lines for the selected tenant-scoped ledger entry and compares
+  debit and credit totals with exact decimal arithmetic.
+- A missing ledger or zero journal lines is `INSUFFICIENT_EVIDENCE`; a balanced journal
+  is a verified `NO_MATCH`, not missing evidence.
+- Unit and PostgreSQL integration tests cover tenant isolation, exact boundaries,
+  journal imbalance, and existing-rule regressions.
+
+Verified coverage is now 23 of 63 rules; R027, R030, and R031 remain deferred as documented.
+
 ## Cache correctness and concurrency verification — 2026-10-28
 
 `npm run check` passed:

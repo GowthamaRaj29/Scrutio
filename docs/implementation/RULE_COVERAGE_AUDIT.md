@@ -49,8 +49,8 @@ evidence.
 | R022 | Posted ledger for failed/cancelled/expired payment      | IMPLEMENTED_VERIFIED           | Existing latest-ledger evidence, direct rule tests, and live PostgreSQL query coverage verify tenant-safe evaluation                  |
 | R023 | Payment-credit ledger amount mismatch                   | IMPLEMENTED_VERIFIED           | Tenant-scoped exact payment-credit amount mismatch aggregate and direct/live tests verify entry-type filtering                        |
 | R024 | Duplicate posted payment-credit ledger entries          | IMPLEMENTED_VERIFIED           | Tenant-scoped `POSTED`/`PAYMENT_CREDIT` count aggregate and live duplicate-ledger coverage are tested                                 |
-| R025 | Ledger pending beyond one hour                          | BLOCKED_QUERY_OR_EVIDENCE      | Ledger status exists, but ledger age is not loaded                                                                                    |
-| R026 | Journal debit/credit imbalance                          | BLOCKED_QUERY_OR_EVIDENCE      | Journal lines exist and ingestion validates them, but investigation evidence omits lines                                              |
+| R025 | Ledger pending beyond one hour                          | IMPLEMENTED_VERIFIED           | Tenant-scoped latest-ledger created-at evidence uses evaluation-time age and strict one-hour boundary tests                           |
+| R026 | Journal debit/credit imbalance                          | IMPLEMENTED_VERIFIED           | Tenant-scoped journal debit/credit aggregates preserve missing-versus-balanced semantics and use exact decimal comparison             |
 | R027 | Unexpected ledger account code                          | BLOCKED_QUERY_OR_EVIDENCE      | Ledger accounts exist, but account code/allowlist is not in evidence                                                                  |
 | R028 | Reversed ledger without payment reversal reason         | NOT_STARTED_SCHEMA_OR_EXTERNAL | Reversal reason and corresponding payment reversal history are absent                                                                 |
 | R029 | Refund debit without refund payment status              | IMPLEMENTED_VERIFIED           | Tenant-scoped refund-debit existence projection detects non-refund payment statuses, including non-latest entries                     |
@@ -91,10 +91,10 @@ evidence.
 
 ## Coverage summary
 
-- **Implemented and directly verified:** 21 rules — R001, R004, R005, R009, R010, R012, R020, R021, R022, R023, R024, R029, R035, R037, R039, R041, R043, R052, R055, R056, and R060.
+- **Implemented and directly verified:** 23 rules — R001, R004, R005, R009, R010, R012, R020, R021, R022, R023, R024, R025, R026, R029, R035, R037, R039, R041, R043, R052, R055, R056, and R060.
 - **Implemented but under-tested:** 10 rules — R002, R003, R006-R008, R011, R033, R036, R042, and R044.
 - **Partial or misidentified:** none among R004, R020, R021, R039, and R041 after this correction.
-- **Blocked primarily by missing evidence queries/normalization:** 15 rules — R014-R019, R025-R027, R030-R031, R034, R038, R040, and R049.
+- **Blocked primarily by missing evidence queries/normalization:** 13 rules — R014-R019, R027, R030-R031, R034, R038, R040, and R049.
 - **Not started because required schema, audit, incident, or external data is absent:** 17 rules — R013, R028, R032, R045-R048, R050-R051, R053-R054, R057-R059, and R061-R063.
 
 The counts intentionally distinguish a rule whose data exists but is not queried from a rule that

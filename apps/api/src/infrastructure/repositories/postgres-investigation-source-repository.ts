@@ -37,6 +37,10 @@ type SourceRow = {
   ledger_amount: string | null;
   ledger_currency: string | null;
   ledger_status: 'PENDING' | 'POSTED' | 'REVERSED' | null;
+  ledger_created_at: Date | null;
+  journal_line_count: number | null;
+  journal_debit_amount: string | null;
+  journal_credit_amount: string | null;
   settlement_id: string | null;
   settlement_status: 'PENDING' | 'SETTLED' | 'FAILED' | null;
   settlement_amount: string | null;
@@ -93,6 +97,8 @@ export class InvestigationSourceRepository {
               w.received_at AS webhook_received_at,
               l.id AS ledger_entry_id, l.amount::text AS ledger_amount,
               l.currency AS ledger_currency, l.status AS ledger_status,
+              l.created_at AS ledger_created_at,
+              j.journal_line_count, j.journal_debit_amount, j.journal_credit_amount,
               s.settlement_id, s.status AS settlement_status,
               s.amount::text AS settlement_amount, s.currency AS settlement_currency,
               s.settled_at AS settlement_settled_at,
@@ -124,12 +130,22 @@ export class InvestigationSourceRepository {
             LIMIT 1
          ) w ON true
          LEFT JOIN LATERAL (
-           SELECT id, amount, currency, status
+           SELECT id, amount, currency, status, created_at
              FROM ledger_entries
             WHERE organization_id = p.organization_id AND payment_id = p.payment_id
             ORDER BY created_at DESC
             LIMIT 1
          ) l ON true
+         LEFT JOIN LATERAL (
+           SELECT COUNT(*)::int AS journal_line_count,
+                  COALESCE(SUM(lines.amount) FILTER (WHERE lines.direction = 'DEBIT'), 0)::text
+                    AS journal_debit_amount,
+                  COALESCE(SUM(lines.amount) FILTER (WHERE lines.direction = 'CREDIT'), 0)::text
+                    AS journal_credit_amount
+             FROM journal_lines lines
+            WHERE lines.organization_id = p.organization_id
+              AND lines.ledger_entry_id = l.id
+         ) j ON true
          LEFT JOIN LATERAL (
            SELECT COUNT(*)::int AS posted_payment_credit_count
              FROM ledger_entries posted
@@ -263,13 +279,15 @@ export class InvestigationSourceRepository {
         row.ledger_entry_id === null ||
         row.ledger_amount === null ||
         row.ledger_currency === null ||
-        row.ledger_status === null
+        row.ledger_status === null ||
+        row.ledger_created_at === null
           ? null
           : {
               entryId: row.ledger_entry_id,
               amount: row.ledger_amount,
               currency: row.ledger_currency,
               status: row.ledger_status,
+              createdAt: row.ledger_created_at.toISOString(),
             },
       settlement:
         row.settlement_id === null ||
@@ -291,6 +309,9 @@ export class InvestigationSourceRepository {
       paymentCreditCount: row.payment_credit_count,
       paymentCreditAmountMismatchCount: row.payment_credit_amount_mismatch_count,
       refundDebitExists: row.refund_debit_exists,
+      journalLineCount: row.journal_line_count,
+      journalDebitAmount: row.journal_debit_amount,
+      journalCreditAmount: row.journal_credit_amount,
       settlementCount: row.settlement_count,
       providerHistory:
         row.provider_name === null ||
