@@ -2,10 +2,11 @@
 
 Status values: `PASS`, `IMPLEMENTED_NOT_VERIFIED`, `BLOCKED`.
 
-The current PostgreSQL schema contains payment records and authentication data, but not authoritative
-orders, webhook events, ledger entries, settlements, or pattern aggregates. The engine therefore
-implements only rules whose inputs can be represented safely by the current payment boundary and
-explicit optional evidence. Unsupported rules remain blocked rather than being inferred from absent data.
+The current PostgreSQL schema contains tenant-scoped payment, order, webhook, ledger, journal,
+settlement, and pattern-aggregate evidence for the implemented rule families. The engine
+implements only rules whose inputs can be represented safely by those authoritative sources and
+explicit optional evidence. Unsupported rules remain blocked rather than being inferred from
+absent data.
 
 | Scenario                       | Rule(s)                | Input condition                                                               | Expected outcome                                  | Test                                                      | Status                   |
 | ------------------------------ | ---------------------- | ----------------------------------------------------------------------------- | ------------------------------------------------- | --------------------------------------------------------- | ------------------------ |

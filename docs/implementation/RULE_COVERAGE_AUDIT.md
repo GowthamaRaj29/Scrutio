@@ -1,6 +1,6 @@
 # Detection-rule coverage audit
 
-Audit date: 2026-10-28
+Audit date: 2026-11-01
 
 Source of truth: `Prompts/Scrutio_Investigator_Complete_Master_Specification.md`,
 the actual `InvestigationEngine`, normalized evidence schema, PostgreSQL source query,
@@ -91,7 +91,7 @@ evidence.
 
 ## Coverage summary
 
-- **Implemented and directly verified:** 33 rules — R001, R002, R003, R004, R005, R006, R007, R008, R009, R010, R011, R012, R020, R021, R022, R023, R024, R025, R026, R029, R033, R035, R036, R037, R039, R041, R042, R043, R044, R052, R055, R056, and R060.
+- **Implemented and directly verified:** 33 rules — R001, R002, R003, R004, R005, R006, R007, R008, R009, R010, R011, R012, R020, R021, R022, R023, R024, R025, R026, R029, R033, R035, R036, R037, R039, R041, R042, R043, R044, R052, R055, and R060.
 - **Implemented but under-tested:** 0 rules in this boundary-test group; live PostgreSQL validation for these direct evaluator cases remains a separate follow-up.
 - **Partial or misidentified:** none among R004, R020, R021, R039, and R041 after this correction.
 - **Blocked primarily by missing evidence queries/normalization:** 13 rules — R014-R019, R027, R030-R031, R034, R038, R040, and R049.
