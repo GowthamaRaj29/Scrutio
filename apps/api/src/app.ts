@@ -8,7 +8,7 @@ import {
   settlementIngestionSchema,
   webhookIngestionSchema,
 } from './domain/ingestion.js';
-import { requireAuthentication, readSessionToken } from './middleware/auth.js';
+import { requireAuthentication, readSessionToken, requireRoles } from './middleware/auth.js';
 import { AuthService, AuthenticationError, LoginRateLimiter } from './services/auth-service.js';
 import { PaymentNotFoundError } from './services/payment-status-service.js';
 import {
@@ -103,6 +103,7 @@ export function createApp(dependencies: AppDependencies): express.Express {
   app.post(
     '/api/v1/organizations/:organizationId/payments/:paymentId/provider-reference',
     requireAuthentication(authService),
+    requireRoles('owner', 'admin', 'analyst'),
     async (request: Request, response: Response): Promise<void> => {
       const path = paymentPathSchema.safeParse(request.params);
       const body = paymentProviderReferenceIngestionSchema.safeParse(request.body);
@@ -137,6 +138,7 @@ export function createApp(dependencies: AppDependencies): express.Express {
   app.post(
     '/api/v1/organizations/:organizationId/provider/payment-events',
     requireAuthentication(authService),
+    requireRoles('owner', 'admin', 'analyst'),
     async (request: Request, response: Response): Promise<void> => {
       const path = investigationPathSchema.safeParse(request.params);
       const body = providerPaymentEventIngestionSchema.safeParse(request.body);
@@ -165,6 +167,7 @@ export function createApp(dependencies: AppDependencies): express.Express {
   app.post(
     '/api/v1/organizations/:organizationId/settlements',
     requireAuthentication(authService),
+    requireRoles('owner', 'admin', 'analyst'),
     async (request: Request, response: Response): Promise<void> => {
       const path = investigationPathSchema.safeParse(request.params);
       const body = settlementIngestionSchema.safeParse(request.body);
@@ -193,6 +196,7 @@ export function createApp(dependencies: AppDependencies): express.Express {
   app.post(
     '/api/v1/organizations/:organizationId/ledger/entries',
     requireAuthentication(authService),
+    requireRoles('owner', 'admin', 'analyst'),
     async (request: Request, response: Response): Promise<void> => {
       const path = investigationPathSchema.safeParse(request.params);
       const body = ledgerEntryIngestionSchema.safeParse(request.body);
@@ -221,6 +225,7 @@ export function createApp(dependencies: AppDependencies): express.Express {
   app.post(
     '/api/v1/organizations/:organizationId/orders',
     requireAuthentication(authService),
+    requireRoles('owner', 'admin', 'analyst'),
     async (request: Request, response: Response): Promise<void> => {
       const path = investigationPathSchema.safeParse(request.params);
       const body = orderIngestionSchema.safeParse(request.body);
@@ -247,6 +252,7 @@ export function createApp(dependencies: AppDependencies): express.Express {
   app.post(
     '/api/v1/organizations/:organizationId/webhooks',
     requireAuthentication(authService),
+    requireRoles('owner', 'admin', 'analyst'),
     async (request: Request, response: Response): Promise<void> => {
       const path = investigationPathSchema.safeParse(request.params);
       const body = webhookIngestionSchema.safeParse(request.body);
@@ -291,6 +297,7 @@ export function createApp(dependencies: AppDependencies): express.Express {
   app.post(
     '/api/v1/organizations/:organizationId/investigations',
     requireAuthentication(authService),
+    requireRoles('owner', 'admin', 'analyst'),
     async (request: Request, response: Response): Promise<void> => {
       const path = investigationPathSchema.safeParse(request.params);
       const body = investigationRequestSchema.safeParse(request.body);

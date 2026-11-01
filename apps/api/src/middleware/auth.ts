@@ -1,6 +1,11 @@
 /* eslint-disable @typescript-eslint/no-namespace */
 import type { NextFunction, Request, Response } from 'express';
-import { AuthService, SessionError, type AuthenticatedUser } from '../services/auth-service.js';
+import {
+  AuthService,
+  SessionError,
+  type AuthenticatedUser,
+  type UserRole,
+} from '../services/auth-service.js';
 
 declare global {
   namespace Express {
@@ -40,5 +45,16 @@ export function requireAuthentication(authService: AuthService) {
       }
       next(error);
     }
+  };
+}
+
+export function requireRoles(...roles: UserRole[]) {
+  return (request: Request, response: Response, next: NextFunction): void => {
+    const user = request.authenticatedUser;
+    if (user === undefined || !roles.includes(user.role)) {
+      response.status(403).json({ error: 'Forbidden' });
+      return;
+    }
+    next();
   };
 }

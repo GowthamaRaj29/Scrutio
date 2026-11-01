@@ -110,8 +110,9 @@ database without deleting the existing volume or data.
 - Cross-tenant investigation retrieval returned no result.
 - Existing authentication and payment RLS tests continued to pass.
 
-The clean-database migration run remains to be performed in an isolated PostgreSQL container;
-the existing development database verification does not substitute for that evidence.
+A clean-database migration run was completed in a disposable PostgreSQL 16 container. All
+migrations `001_initial.sql` through `013_investigation_history_immutability.sql` applied
+successfully and `013` appeared in `schema_migrations`.
 
 ## Protected investigation API verification — 2026-10-28
 
@@ -131,9 +132,10 @@ the existing development database verification does not substitute for that evid
 
 `npm audit --omit=dev` passed with 0 vulnerabilities.
 
-Limitations: the current API exposes only the supported payment/order/webhook evidence slice;
-viewer-specific role coverage, frontend E2E tests, cache invalidation/single-flight tests, and
-the optional AI boundary remain future phases.
+Limitations: The current API exposes only the supported payment/order/webhook evidence slice; frontend E2E tests
+and the optional AI boundary remain future phases. The role matrix covers the authenticated
+analyst flow and viewer denial across all write routes; owner/admin route execution remains
+structurally identical through the shared role middleware and is not separately fixture-tested.
 
 ## Operational ingestion verification — 2026-10-28
 
@@ -343,6 +345,68 @@ Additional adversarial checks passed:
 
 These tests establish coverage for the exercised paths only; they do not prove that every future
 query, administrative operation, or background process is tenant-safe.
+
+## Authorization and tenant-isolation completeness audit — 2026-11-01
+
+### Route inventory
+
+| Route surface                                                                       | Authentication | Authorization/context                               | Data access                                              |
+| ----------------------------------------------------------------------------------- | -------------- | --------------------------------------------------- | -------------------------------------------------------- |
+| `GET /health`                                                                       | None           | Public liveness only                                | No tenant data                                           |
+| `POST /api/v1/auth/login`                                                           | None           | Membership selected server-side                     | Users, memberships, sessions, audit events               |
+| `POST /api/v1/auth/logout`                                                          | Session        | Session token only                                  | Sessions, audit events                                   |
+| `POST /api/v1/organizations/:organizationId/payments/:paymentId/provider-reference` | Session        | Organization match; transaction context set         | Payment provider reference                               |
+| `POST /api/v1/organizations/:organizationId/provider/payment-events`                | Session        | Organization match; transaction context set         | Provider payment events and payments                     |
+| `POST /api/v1/organizations/:organizationId/settlements`                            | Session        | Organization match; transaction context set         | Settlements and settlement payments                      |
+| `POST /api/v1/organizations/:organizationId/ledger/entries`                         | Session        | Organization match; transaction context set         | Ledger accounts and entries                              |
+| `POST /api/v1/organizations/:organizationId/orders`                                 | Session        | Organization match; transaction context set         | Orders and payment linkage                               |
+| `POST /api/v1/organizations/:organizationId/webhooks`                               | Session        | Organization match; transaction context set         | Webhook events                                           |
+| `POST /api/v1/organizations/:organizationId/investigations`                         | Session        | Organization match plus role in owner/admin/analyst | Tenant-scoped payment evidence and investigation history |
+| `GET /api/v1/organizations/:organizationId/investigations/:id`                      | Session        | Organization match                                  | Tenant-scoped investigation history                      |
+| `GET /api/v1/organizations/:organizationId/payments/:paymentId/status`              | Session        | Organization match                                  | Tenant-scoped payment lookup and cache                   |
+
+### Current role matrix
+
+| Role    | Investigation create |           Investigation read | Ingestion routes |
+| ------- | -------------------: | ---------------------------: | ---------------: |
+| owner   |              allowed | allowed for own organization |          allowed |
+| admin   |              allowed | allowed for own organization |          allowed |
+| analyst |              allowed | allowed for own organization |          allowed |
+| viewer  |               denied | allowed for own organization |           denied |
+
+The selected product policy is read-only viewers. A shared role middleware now denies viewers on
+all ingestion routes and investigation creation while preserving authenticated payment-status and
+investigation-read access.
+
+No background jobs, schedulers, queues, or worker processes were found under `apps/api/src`; all
+observed database work executes through explicit transaction wrappers with tenant context.
+
+The audit also verifies revoked and expired sessions, cross-tenant API denial, database CRUD denial,
+pooled-connection context reset, randomized duplicate-ingestion concurrency, rollback after failed
+ingestion, and append-only investigation history privileges. These results cover exercised paths,
+not universal safety for future administrative or background code.
+
+### Migration and privilege verification
+
+Migration `013_investigation_history_immutability.sql` is safe for fresh and existing databases:
+the migration runner sorts it after the original operational-data grants, applies it once using
+`schema_migrations`, and does not re-grant the revoked privileges. The application role is
+created as `NOSUPERUSER NOBYPASSRLS`; integration assertions verify those attributes, zero role
+memberships, forced RLS on all three history tables, and no application-role `UPDATE` or `DELETE`
+privileges. The administrative migration role remains responsible for cleanup and migrations.
+
+Direct application-role attempts to update or delete investigations, findings, and evidence
+references are rejected. Because investigation deletion is denied, its `ON DELETE CASCADE`
+relationships cannot be used as an indirect mutation path. The application repository exposes
+creation and retrieval only; no legitimate workflow requires historical mutation.
+
+### Evidence boundaries and limitations
+
+Unit tests validate deterministic service behavior without PostgreSQL. Integration tests validate
+the application role, forced RLS, transaction-local context, pool reuse, concurrent duplicate
+webhook identities, session lifecycle, and history privileges against PostgreSQL. No browser
+end-to-end suite is configured in this repository. The role matrix records observed route
+behavior; viewer write permissions remain a product decision and are intentionally unchanged.
 
 ## Cache correctness and concurrency verification — 2026-10-28
 

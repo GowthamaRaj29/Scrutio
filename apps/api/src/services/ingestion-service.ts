@@ -61,11 +61,13 @@ export class IngestionService {
         }
         return false;
       }
-      await client.query(
+      const insertedEvent = await client.query<{ id: string }>(
         `INSERT INTO webhook_events (
            organization_id, event_id, payment_id, event_type, signature_verified,
            processing_status, received_at, processed_at
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         ON CONFLICT (organization_id, event_id) DO NOTHING
+         RETURNING id`,
         [
           organizationId,
           input.eventId,
@@ -77,7 +79,33 @@ export class IngestionService {
           input.processedAt ?? null,
         ],
       );
-      return true;
+      if (insertedEvent.rowCount !== 0) {
+        return true;
+      }
+      const concurrent = await client.query<{
+        payment_id: string | null;
+        event_type: string;
+        signature_verified: boolean;
+        processing_status: WebhookIngestion['processingStatus'];
+        received_at: Date;
+      }>(
+        `SELECT payment_id, event_type, signature_verified, processing_status, received_at
+           FROM webhook_events
+          WHERE organization_id = $1 AND event_id = $2`,
+        [organizationId, input.eventId],
+      );
+      const concurrentRow = concurrent.rows[0];
+      if (
+        concurrentRow === undefined ||
+        concurrentRow.payment_id !== input.paymentId ||
+        concurrentRow.event_type !== input.eventType ||
+        concurrentRow.signature_verified !== input.signatureVerified ||
+        concurrentRow.processing_status !== input.processingStatus ||
+        concurrentRow.received_at.toISOString() !== input.receivedAt
+      ) {
+        throw new IngestionConflictError('Webhook event conflicts with an existing event');
+      }
+      return false;
     });
     if (inserted) {
       this.paymentStatusService.invalidateAfterMutation(organizationId, input.paymentId);

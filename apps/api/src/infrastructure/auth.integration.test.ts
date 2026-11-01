@@ -28,7 +28,13 @@ void test('PostgreSQL authentication sessions are tenant-scoped and revocable', 
   const otherOrganizationId = randomUUID();
   const userId = randomUUID();
   const otherUserId = randomUUID();
+  const viewerUserId = randomUUID();
+  const ownerUserId = randomUUID();
+  const adminUserId = randomUUID();
   const email = `auth-${userId}@example.test`;
+  const viewerEmail = `viewer-${viewerUserId}@example.test`;
+  const ownerEmail = `owner-${ownerUserId}@example.test`;
+  const adminEmail = `admin-${adminUserId}@example.test`;
   const password = 'correct horse battery staple';
   try {
     const passwordHash = await createPasswordHash(password);
@@ -46,6 +52,17 @@ void test('PostgreSQL authentication sessions are tenant-scoped and revocable', 
       `INSERT INTO users (id, email, password_hash) VALUES ($1, $2, 'test-hash')`,
       [otherUserId, `other-${otherUserId}@example.test`],
     );
+    const viewerPasswordHash = await createPasswordHash(password);
+    await adminDatabase.query(`INSERT INTO users (id, email, password_hash) VALUES ($1, $2, $3)`, [
+      viewerUserId,
+      viewerEmail,
+      viewerPasswordHash,
+    ]);
+    await adminDatabase.query(
+      `INSERT INTO users (id, email, password_hash)
+       VALUES ($1, $2, $3), ($4, $5, $3)`,
+      [ownerUserId, ownerEmail, viewerPasswordHash, adminUserId, adminEmail],
+    );
     await adminDatabase.query(
       `INSERT INTO organization_memberships (user_id, organization_id, role)
        VALUES ($1, $2, 'analyst')`,
@@ -55,6 +72,16 @@ void test('PostgreSQL authentication sessions are tenant-scoped and revocable', 
       `INSERT INTO organization_memberships (user_id, organization_id, role)
        VALUES ($1, $2, 'analyst')`,
       [otherUserId, otherOrganizationId],
+    );
+    await adminDatabase.query(
+      `INSERT INTO organization_memberships (user_id, organization_id, role)
+       VALUES ($1, $2, 'viewer')`,
+      [viewerUserId, organizationId],
+    );
+    await adminDatabase.query(
+      `INSERT INTO organization_memberships (user_id, organization_id, role)
+       VALUES ($1, $2, 'owner'), ($3, $2, 'admin')`,
+      [ownerUserId, organizationId, adminUserId],
     );
 
     const authService = new AuthService(appDatabase);
@@ -66,6 +93,11 @@ void test('PostgreSQL authentication sessions are tenant-scoped and revocable', 
     assert.equal(login.user.organizationId, organizationId);
     assert.equal(login.user.role, 'analyst');
     assert.equal((await authService.currentUser(login.token)).userId, userId);
+    await authService.logout(login.token);
+    await assert.rejects(
+      () => authService.currentUser(login.token),
+      (error: unknown) => error instanceof SessionError,
+    );
     const expiringLogin = await authService.login(email, password);
     await adminDatabase.query('UPDATE sessions SET expires_at = NOW() WHERE id = $1', [
       expiringLogin.user.sessionId,
@@ -128,6 +160,16 @@ void test('PostgreSQL authentication sessions are tenant-scoped and revocable', 
         },
       );
       assert.equal(unauthenticatedInvestigation.status, 401);
+      const malformedSession = await fetch(
+        `${baseUrl}/api/v1/organizations/${organizationId}/payments/AUTH-PAYMENT-001/status`,
+        { headers: { cookie: 'scrutio_session=malformed-token' } },
+      );
+      assert.equal(malformedSession.status, 401);
+      const invalidSession = await fetch(
+        `${baseUrl}/api/v1/organizations/${organizationId}/payments/AUTH-PAYMENT-001/status`,
+        { headers: { cookie: 'scrutio_session=' + 'f'.repeat(64) } },
+      );
+      assert.equal(invalidSession.status, 401);
       const loginResponse = await fetch(`${baseUrl}/api/v1/auth/login`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -136,6 +178,107 @@ void test('PostgreSQL authentication sessions are tenant-scoped and revocable', 
       assert.equal(loginResponse.status, 200);
       const cookie = loginResponse.headers.get('set-cookie')?.split(';')[0];
       assert.ok(cookie);
+
+      const viewerLoginResponse = await fetch(`${baseUrl}/api/v1/auth/login`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email: viewerEmail, password }),
+      });
+      assert.equal(viewerLoginResponse.status, 200);
+      const viewerCookie = viewerLoginResponse.headers.get('set-cookie')?.split(';')[0];
+      assert.ok(viewerCookie);
+      const viewerWriteRequests = [
+        fetch(
+          `${baseUrl}/api/v1/organizations/${organizationId}/payments/AUTH-PAYMENT-001/provider-reference`,
+          {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', cookie: viewerCookie },
+            body: JSON.stringify({ provider: 'viewer', providerReferenceId: 'VIEWER-REF' }),
+          },
+        ),
+        fetch(`${baseUrl}/api/v1/organizations/${organizationId}/provider/payment-events`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', cookie: viewerCookie },
+          body: JSON.stringify({ paymentId: 'AUTH-PAYMENT-001', provider: 'test-provider' }),
+        }),
+        fetch(`${baseUrl}/api/v1/organizations/${organizationId}/settlements`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', cookie: viewerCookie },
+          body: JSON.stringify({ settlementId: 'VIEWER-SETTLEMENT', status: 'SETTLED' }),
+        }),
+        fetch(`${baseUrl}/api/v1/organizations/${organizationId}/ledger/entries`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', cookie: viewerCookie },
+          body: JSON.stringify({ paymentId: 'AUTH-PAYMENT-001', lines: [] }),
+        }),
+        fetch(`${baseUrl}/api/v1/organizations/${organizationId}/orders`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', cookie: viewerCookie },
+          body: JSON.stringify({ orderId: 'VIEWER-ORDER', paymentId: 'AUTH-PAYMENT-001' }),
+        }),
+        fetch(`${baseUrl}/api/v1/organizations/${organizationId}/webhooks`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', cookie: viewerCookie },
+          body: JSON.stringify({ eventId: 'VIEWER-EVENT', paymentId: 'AUTH-PAYMENT-001' }),
+        }),
+        fetch(`${baseUrl}/api/v1/organizations/${organizationId}/investigations`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', cookie: viewerCookie },
+          body: JSON.stringify({ paymentId: 'AUTH-PAYMENT-001' }),
+        }),
+      ];
+      const viewerWriteResponses = await Promise.all(viewerWriteRequests);
+      assert.deepEqual(
+        viewerWriteResponses.map((response) => response.status),
+        [403, 403, 403, 403, 403, 403, 403],
+      );
+      const viewerStatusResponse = await fetch(
+        `${baseUrl}/api/v1/organizations/${organizationId}/payments/AUTH-PAYMENT-001/status`,
+        { headers: { cookie: viewerCookie } },
+      );
+      assert.equal(viewerStatusResponse.status, 200);
+
+      const protectedWriteRoutes = [
+        `/api/v1/organizations/${organizationId}/payments/AUTH-PAYMENT-001/provider-reference`,
+        `/api/v1/organizations/${organizationId}/provider/payment-events`,
+        `/api/v1/organizations/${organizationId}/settlements`,
+        `/api/v1/organizations/${organizationId}/ledger/entries`,
+        `/api/v1/organizations/${organizationId}/orders`,
+        `/api/v1/organizations/${organizationId}/webhooks`,
+        `/api/v1/organizations/${organizationId}/investigations`,
+      ];
+      for (const [roleEmail, role] of [
+        [ownerEmail, 'owner'],
+        [adminEmail, 'admin'],
+      ] as const) {
+        const roleLoginResponse = await fetch(`${baseUrl}/api/v1/auth/login`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ email: roleEmail, password }),
+        });
+        assert.equal(roleLoginResponse.status, 200, `${role} login`);
+        const roleCookie = roleLoginResponse.headers.get('set-cookie')?.split(';')[0];
+        assert.ok(roleCookie);
+        const roleResponses = await Promise.all(
+          protectedWriteRoutes.map((route) =>
+            fetch(`${baseUrl}${route}`, {
+              method: 'POST',
+              headers: { 'content-type': 'application/json', cookie: roleCookie },
+              body: JSON.stringify({}),
+            }),
+          ),
+        );
+        assert.equal(
+          roleResponses.every((response) => response.status !== 403),
+          true,
+          `${role} was denied by route authorization`,
+        );
+        assert.deepEqual(
+          roleResponses.map((response) => response.status),
+          [400, 400, 400, 400, 400, 400, 400],
+          `${role} route validation`,
+        );
+      }
 
       const crossTenantPost = await fetch(
         `${baseUrl}/api/v1/organizations/${otherOrganizationId}/investigations`,
@@ -231,16 +374,16 @@ void test('PostgreSQL authentication sessions are tenant-scoped and revocable', 
         },
       );
       assert.equal(duplicateWebhookResponse.status, 202);
-      const concurrentWebhookPayload = {
+      const concurrentWebhookPayloads = Array.from({ length: 16 }, (_, index) => ({
         ...webhookPayload,
-        eventId: 'AUTH-WEBHOOK-CONCURRENT',
-      };
+        eventId: `AUTH-WEBHOOK-CONCURRENT-${String(index % 5)}`,
+      }));
       const concurrentWebhookResponses = await Promise.all(
-        Array.from({ length: 8 }, () =>
+        concurrentWebhookPayloads.map((payload) =>
           fetch(`${baseUrl}/api/v1/organizations/${organizationId}/webhooks`, {
             method: 'POST',
             headers: { 'content-type': 'application/json', cookie },
-            body: JSON.stringify(concurrentWebhookPayload),
+            body: JSON.stringify(payload),
           }),
         ),
       );
@@ -250,10 +393,10 @@ void test('PostgreSQL authentication sessions are tenant-scoped and revocable', 
       );
       const concurrentWebhookCount = await adminDatabase.query<{ count: string }>(
         `SELECT COUNT(*)::text AS count FROM webhook_events
-          WHERE organization_id = $1 AND event_id = $2`,
-        [organizationId, concurrentWebhookPayload.eventId],
+          WHERE organization_id = $1 AND event_id LIKE 'AUTH-WEBHOOK-CONCURRENT-%'`,
+        [organizationId],
       );
-      assert.equal(concurrentWebhookCount.rows[0]?.count, '1');
+      assert.equal(concurrentWebhookCount.rows[0]?.count, '5');
       const conflictingWebhookResponse = await fetch(
         `${baseUrl}/api/v1/organizations/${organizationId}/webhooks`,
         {
@@ -534,7 +677,13 @@ void test('PostgreSQL authentication sessions are tenant-scoped and revocable', 
       organizationId,
       otherOrganizationId,
     ]);
-    await adminDatabase.query('DELETE FROM users WHERE id IN ($1, $2)', [userId, otherUserId]);
+    await adminDatabase.query('DELETE FROM users WHERE id IN ($1, $2, $3, $4, $5)', [
+      userId,
+      otherUserId,
+      viewerUserId,
+      ownerUserId,
+      adminUserId,
+    ]);
     await adminDatabase.query('DELETE FROM organizations WHERE id IN ($1, $2)', [
       organizationId,
       otherOrganizationId,

@@ -122,3 +122,173 @@ void test('PostgreSQL migration and tenant-scoped payment lookup', async (contex
     await database.close();
   }
 });
+
+void test('application role enforces forced RLS and immutable investigation history', async (context) => {
+  if (config.databaseUrl === undefined) {
+    context.skip('DATABASE_URL is not configured; run this test against real PostgreSQL');
+    return;
+  }
+
+  await runMigrations(config.databaseAdminUrl ?? config.databaseUrl);
+  const database = new Database(config.databaseUrl, 4);
+  const adminDatabase = new Database(config.databaseAdminUrl ?? config.databaseUrl);
+  const organizationId = '00000000-0000-0000-0000-000000000011';
+  const otherOrganizationId = '00000000-0000-0000-0000-000000000012';
+  const userId = '00000000-0000-0000-0000-000000000013';
+  const tables = [
+    'investigations',
+    'investigation_findings',
+    'investigation_evidence_references',
+  ] as const;
+  try {
+    const identity = await database.query<{
+      current_user: string;
+      superuser: boolean;
+      bypassrls: boolean;
+    }>(
+      `SELECT current_user, rolsuper AS superuser, rolbypassrls AS bypassrls
+         FROM pg_roles
+        WHERE rolname = current_user`,
+    );
+    assert.equal(identity.rows.length, 1);
+    const identityRow = identity.rows[0];
+    assert.ok(identityRow);
+    assert.equal(identityRow.superuser, false);
+    assert.equal(identityRow.bypassrls, false);
+    const memberships = await database.query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count
+         FROM pg_auth_members
+        WHERE member = current_user::regrole`,
+    );
+    const membershipRow = memberships.rows[0];
+    assert.ok(membershipRow);
+    assert.equal(membershipRow.count, '0');
+
+    for (const table of tables) {
+      const privileges = await database.query<{ can_update: boolean; can_delete: boolean }>(
+        `SELECT has_table_privilege(current_user, $1, 'UPDATE') AS can_update,
+                has_table_privilege(current_user, $1, 'DELETE') AS can_delete`,
+        [table],
+      );
+      const privilegeRow = privileges.rows[0];
+      assert.ok(privilegeRow);
+      assert.equal(privilegeRow.can_update, false);
+      assert.equal(privilegeRow.can_delete, false);
+      const rls = await database.query<{ relrowsecurity: boolean; relforcerowsecurity: boolean }>(
+        `SELECT relrowsecurity, relforcerowsecurity
+           FROM pg_class
+          WHERE oid = $1::regclass`,
+        [table],
+      );
+      const rlsRow = rls.rows[0];
+      assert.ok(rlsRow);
+      assert.equal(rlsRow.relrowsecurity, true);
+      assert.equal(rlsRow.relforcerowsecurity, true);
+    }
+
+    await database.query(
+      `INSERT INTO organizations (id, slug, name)
+       VALUES ($1, 'immutability-one', 'Immutability One'),
+              ($2, 'immutability-two', 'Immutability Two')
+       ON CONFLICT (id) DO NOTHING`,
+      [organizationId, otherOrganizationId],
+    );
+    await adminDatabase.query(
+      `INSERT INTO users (id, email, password_hash)
+       VALUES ($1, 'immutability-user@example.test', 'test-hash')
+       ON CONFLICT (id) DO NOTHING`,
+      [userId],
+    );
+    await adminDatabase.query(
+      `INSERT INTO organization_memberships (user_id, organization_id, role)
+       VALUES ($1, $2, 'analyst')
+       ON CONFLICT (user_id, organization_id) DO NOTHING`,
+      [userId, organizationId],
+    );
+    const created = await database.withTransaction(organizationId, async (client) => {
+      const investigation = await client.query<{ id: string }>(
+        `INSERT INTO investigations
+           (organization_id, requested_by, status, rule_set_version,
+            evaluation_timestamp, input_fingerprint)
+         VALUES ($1, $2, 'PARTIAL', 'test', NOW(), repeat('a', 64))
+         RETURNING id`,
+        [organizationId, userId],
+      );
+      const finding = await client.query<{ id: string }>(
+        `INSERT INTO investigation_findings
+           (organization_id, investigation_id, rule_id, rule_version,
+            severity, status, explanation)
+         VALUES ($1, $2, 'R999', 'test', 'LOW', 'NO_MATCH', 'test')
+         RETURNING id`,
+        [organizationId, investigation.rows[0]?.id],
+      );
+      const evidence = await client.query<{ id: string }>(
+        `INSERT INTO investigation_evidence_references
+           (organization_id, investigation_id, finding_id, source_type, source_id)
+         VALUES ($1, $2, $3, 'payment', 'IMMUTABILITY')
+         RETURNING id`,
+        [organizationId, investigation.rows[0]?.id, finding.rows[0]?.id],
+      );
+      return {
+        investigationId: investigation.rows[0]?.id,
+        findingId: finding.rows[0]?.id,
+        evidenceId: evidence.rows[0]?.id,
+      };
+    });
+
+    for (const statement of [
+      `UPDATE investigations SET status = 'COMPLETED' WHERE organization_id = $1 AND id = $2`,
+      `DELETE FROM investigations WHERE organization_id = $1 AND id = $2`,
+      `UPDATE investigation_findings SET explanation = 'changed' WHERE organization_id = $1 AND id = $2`,
+      `DELETE FROM investigation_findings WHERE organization_id = $1 AND id = $2`,
+      `UPDATE investigation_evidence_references SET field_name = 'changed' WHERE organization_id = $1 AND id = $2`,
+      `DELETE FROM investigation_evidence_references WHERE organization_id = $1 AND id = $2`,
+    ]) {
+      await assert.rejects(
+        () =>
+          database.withTransaction(organizationId, async (client) => {
+            const id =
+              statement.includes('investigations ') && !statement.includes('investigation_')
+                ? created.investigationId
+                : statement.includes('findings')
+                  ? created.findingId
+                  : created.evidenceId;
+            await client.query(statement, [organizationId, id]);
+          }),
+        /permission denied|row-level security|policy/,
+      );
+    }
+
+    const concurrentCounts = await Promise.all(
+      [organizationId, otherOrganizationId, organizationId, otherOrganizationId].map((tenantId) =>
+        database.withTransaction(tenantId, async (client) => {
+          const result = await client.query<{ tenant: string | null; count: string }>(
+            `SELECT current_setting('app.organization_id', true) AS tenant,
+                      COUNT(*)::text AS count
+                 FROM organizations
+                WHERE id = $1`,
+            [tenantId],
+          );
+          return result.rows[0];
+        }),
+      ),
+    );
+    assert.deepEqual(
+      concurrentCounts.map((row) => [row?.tenant, row?.count]),
+      [
+        [organizationId, '1'],
+        [otherOrganizationId, '1'],
+        [organizationId, '1'],
+        [otherOrganizationId, '1'],
+      ],
+    );
+  } finally {
+    await adminDatabase.query(`DELETE FROM organizations WHERE id IN ($1, $2)`, [
+      organizationId,
+      otherOrganizationId,
+    ]);
+    await adminDatabase.query('DELETE FROM users WHERE id = $1', [userId]);
+    await database.close();
+    await adminDatabase.close();
+  }
+});

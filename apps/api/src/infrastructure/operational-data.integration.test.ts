@@ -134,6 +134,28 @@ void test('operational data migration enforces tenant integrity and persists inv
       assert.deepEqual(await repository.findById(organizationId, repeated.id), repeated);
       const crossTenant = await repository.findById(otherOrganizationId, created.id);
       assert.equal(crossTenant, null);
+      await client.query('SAVEPOINT before_investigation_update');
+      await assert.rejects(
+        () =>
+          client.query(
+            'UPDATE investigations SET status = $1 WHERE organization_id = $2 AND id = $3',
+            ['COMPLETED', organizationId, created.id],
+          ),
+        /permission denied|row-level security|policy/,
+      );
+      await client.query('ROLLBACK TO SAVEPOINT before_investigation_update');
+      await client.query('RELEASE SAVEPOINT before_investigation_update');
+      await client.query('SAVEPOINT before_investigation_delete');
+      await assert.rejects(
+        () =>
+          client.query('DELETE FROM investigations WHERE organization_id = $1 AND id = $2', [
+            organizationId,
+            created.id,
+          ]),
+        /permission denied|row-level security|policy/,
+      );
+      await client.query('ROLLBACK TO SAVEPOINT before_investigation_delete');
+      await client.query('RELEASE SAVEPOINT before_investigation_delete');
     });
   } finally {
     await adminDatabase.query('DELETE FROM investigations WHERE organization_id = $1', [
