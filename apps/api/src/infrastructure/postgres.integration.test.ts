@@ -46,6 +46,36 @@ void test('PostgreSQL migration and tenant-scoped payment lookup', async (contex
       );
     });
 
+    await database.withTransaction(organizationId, async (client) => {
+      const hidden = await client.query<{ count: string }>(
+        'SELECT COUNT(*)::text AS count FROM payments WHERE organization_id = $1',
+        [otherOrganizationId],
+      );
+      assert.equal(hidden.rows[0]?.count, '0');
+      const updated = await client.query(
+        `UPDATE payments SET amount = 999.00
+          WHERE organization_id = $1 AND payment_id = 'PAY-DB-001'`,
+        [otherOrganizationId],
+      );
+      assert.equal(updated.rowCount, 0);
+      const deleted = await client.query(
+        `DELETE FROM payments
+          WHERE organization_id = $1 AND payment_id = 'PAY-DB-001'`,
+        [otherOrganizationId],
+      );
+      assert.equal(deleted.rowCount, 0);
+      await assert.rejects(
+        () =>
+          client.query(
+            `INSERT INTO payments
+               (organization_id, payment_id, amount, status)
+             VALUES ($1, 'PAY-DB-CROSS-TENANT-INSERT', 1.00, 'SUCCESS')`,
+            [otherOrganizationId],
+          ),
+        /row-level security|policy/,
+      );
+    });
+
     const fastMartPayment = await database.withTransaction(organizationId, async (client) =>
       new PostgresPaymentRepository(client).findByOrganizationAndPaymentId(
         organizationId,
@@ -68,6 +98,16 @@ void test('PostgreSQL migration and tenant-scoped payment lookup', async (contex
       return result.rows[0]?.count;
     });
     assert.equal(contextClearedCount, '0');
+    const reusedTenantCount = await database.withTransaction(
+      otherOrganizationId,
+      async (client) => {
+        const result = await client.query<{ count: string }>(
+          'SELECT COUNT(*)::text AS count FROM payments',
+        );
+        return result.rows[0]?.count;
+      },
+    );
+    assert.equal(reusedTenantCount, '1');
   } finally {
     await database.withTransaction(organizationId, async (client) => {
       await client.query('DELETE FROM payments WHERE payment_id = $1', ['PAY-DB-001']);

@@ -137,6 +137,16 @@ void test('PostgreSQL authentication sessions are tenant-scoped and revocable', 
       const cookie = loginResponse.headers.get('set-cookie')?.split(';')[0];
       assert.ok(cookie);
 
+      const crossTenantPost = await fetch(
+        `${baseUrl}/api/v1/organizations/${otherOrganizationId}/investigations`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', cookie },
+          body: JSON.stringify({ paymentId: 'AUTH-PAYMENT-OTHER' }),
+        },
+      );
+      assert.equal(crossTenantPost.status, 403);
+
       const providerReferencePayload = {
         provider: 'test-provider',
         providerReferenceId: 'AUTH-DUPLICATE-REF-001',
@@ -174,6 +184,11 @@ void test('PostgreSQL authentication sessions are tenant-scoped and revocable', 
         { headers: { cookie } },
       );
       assert.equal(paymentResponse.status, 200);
+      const crossTenantGet = await fetch(
+        `${baseUrl}/api/v1/organizations/${otherOrganizationId}/investigations/${randomUUID()}`,
+        { headers: { cookie } },
+      );
+      assert.equal(crossTenantGet.status, 403);
       const orderPayload = {
         orderId: 'AUTH-ORDER-001',
         paymentId: 'AUTH-PAYMENT-001',
@@ -216,6 +231,29 @@ void test('PostgreSQL authentication sessions are tenant-scoped and revocable', 
         },
       );
       assert.equal(duplicateWebhookResponse.status, 202);
+      const concurrentWebhookPayload = {
+        ...webhookPayload,
+        eventId: 'AUTH-WEBHOOK-CONCURRENT',
+      };
+      const concurrentWebhookResponses = await Promise.all(
+        Array.from({ length: 8 }, () =>
+          fetch(`${baseUrl}/api/v1/organizations/${organizationId}/webhooks`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', cookie },
+            body: JSON.stringify(concurrentWebhookPayload),
+          }),
+        ),
+      );
+      assert.equal(
+        concurrentWebhookResponses.every((response) => response.status === 202),
+        true,
+      );
+      const concurrentWebhookCount = await adminDatabase.query<{ count: string }>(
+        `SELECT COUNT(*)::text AS count FROM webhook_events
+          WHERE organization_id = $1 AND event_id = $2`,
+        [organizationId, concurrentWebhookPayload.eventId],
+      );
+      assert.equal(concurrentWebhookCount.rows[0]?.count, '1');
       const conflictingWebhookResponse = await fetch(
         `${baseUrl}/api/v1/organizations/${organizationId}/webhooks`,
         {
@@ -273,6 +311,12 @@ void test('PostgreSQL authentication sessions are tenant-scoped and revocable', 
         },
       );
       assert.equal(unbalancedLedgerResponse.status, 409);
+      const rolledBackLedger = await adminDatabase.query<{ count: string }>(
+        `SELECT COUNT(*)::text AS count FROM ledger_entries
+          WHERE organization_id = $1 AND source_event_id = 'AUTH-LEDGER-002'`,
+        [organizationId],
+      );
+      assert.equal(rolledBackLedger.rows[0]?.count, '0');
       const settlementPayload = {
         sourceEventId: 'AUTH-SETTLEMENT-001',
         settlementId: 'AUTH-SETTLEMENT-001',

@@ -327,6 +327,23 @@ The live PostgreSQL integration suite passed with the least-privilege applicatio
 The integration command passed all **4 PostgreSQL tests**. Coverage remains 33 of 63 directly
 verified rules, now with live tenant-scoped evidence for this slice.
 
+## Security and operational-integrity verification — 2026-11-01
+
+Additional adversarial checks passed:
+
+- The application role cannot read, update, or delete another tenant's rows; cross-tenant
+  inserts are rejected by forced RLS.
+- Transaction-local tenant context is cleared for context-free transactions and does not leak
+  when a pooled connection is reused by another tenant.
+- Investigation POST and GET endpoints reject cross-tenant organization paths with `403`.
+- Eight simultaneous identical webhook ingestions persist exactly one event.
+- A failed/unbalanced ledger ingestion leaves no persisted ledger row, confirming rollback.
+- Existing audit persistence checks confirm another tenant cannot retrieve historical investigation
+  results; repeated evaluations remain separately persisted with stable fingerprints.
+
+These tests establish coverage for the exercised paths only; they do not prove that every future
+query, administrative operation, or background process is tenant-safe.
+
 ## Cache correctness and concurrency verification — 2026-10-28
 
 `npm run check` passed:
