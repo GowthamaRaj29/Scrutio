@@ -281,6 +281,20 @@ The R025/R026 slice passed:
 
 Verified coverage is now 23 of 63 rules; R027, R030, and R031 remain deferred as documented.
 
+## R027/R030/R031 evidence and lifecycle audit — 2026-11-01
+
+No code or schema changes were made for this audit.
+
+- **R027:** `ledger_accounts.account_code` exists and is tenant-linked, but no organization-specific
+  allowed-account-code policy exists.
+- **R030:** `entry_type` is free-form at ingestion, and no authoritative fee threshold or fee-debit
+  policy exists.
+- **R031:** payment `updated_at` is not a capture timestamp; no success-transition event is stored,
+  and no authoritative missing-settlement threshold exists.
+
+No tests were added because implementing these rules would require inventing policy or substituting
+unrelated timestamps. Coverage remains 23 of 63 directly verified rules.
+
 ## Cache correctness and concurrency verification — 2026-10-28
 
 `npm run check` passed:

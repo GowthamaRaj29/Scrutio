@@ -101,6 +101,25 @@ The counts intentionally distinguish a rule whose data exists but is not queried
 cannot be implemented without changing the authoritative model. They do not imply full rule
 coverage, AI coverage, or production readiness.
 
+## R027/R030/R031 evidence and lifecycle audit
+
+The 2026-11-01 audit deliberately added no evidence projection, configuration default, or
+migration:
+
+- **R027:** `ledger_accounts.account_code` is tenant-scoped and linked to ledger entries, but no
+  organization-owned allowed-account-code policy exists in the schema, configuration, ingestion
+  contract, or normalized evidence.
+- **R030:** `ledger_entries.entry_type` is ingestion-controlled and not constrained to a documented
+  fee vocabulary. There is no authoritative `feeThreshold` source, nor a policy defining the
+  threshold amount basis or currency semantics.
+- **R031:** `payments` has no capture or success-transition timestamp. `updated_at` is mutation time
+  and is not an authoritative lifecycle event. No authoritative `settlementMissingThreshold`
+  source exists.
+
+Implementation requires ownership decisions for the tenant allowlist, fee vocabulary and threshold,
+and payment capture-transition timestamp and settlement threshold. No safe rule predicate can be
+implemented before those decisions.
+
 ## Priority order
 
 1. Add direct boundary tests for the already-coded POM and webhook rules, including the
