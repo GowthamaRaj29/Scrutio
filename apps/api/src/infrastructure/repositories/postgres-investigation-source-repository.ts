@@ -18,6 +18,9 @@ type SourceRow = {
   order_successful_payment_amount: string | null;
   order_successful_payment_count: number | null;
   posted_payment_credit_count: number | null;
+  payment_credit_count: number | null;
+  payment_credit_amount_mismatch_count: number | null;
+  refund_debit_exists: boolean | null;
   settlement_count: number;
   version: number;
   payment_updated_at: Date;
@@ -78,6 +81,9 @@ export class InvestigationSourceRepository {
               CASE WHEN p.order_id IS NULL THEN NULL ELSE order_totals.successful_count END
                 AS order_successful_payment_count,
               ledger_totals.posted_payment_credit_count,
+              ledger_classification.payment_credit_count,
+              ledger_classification.payment_credit_amount_mismatch_count,
+              ledger_classification.refund_debit_exists,
               settlement_totals.settlement_count,
               o.order_id, o.status AS actual_order_status,
               o.amount::text AS order_amount, o.currency AS order_currency,
@@ -132,6 +138,19 @@ export class InvestigationSourceRepository {
               AND posted.status = 'POSTED'
               AND posted.entry_type = 'PAYMENT_CREDIT'
          ) ledger_totals ON true
+         LEFT JOIN LATERAL (
+           SELECT COUNT(*) FILTER (WHERE classified.entry_type = 'PAYMENT_CREDIT')::int
+                    AS payment_credit_count,
+                  COUNT(*) FILTER (
+                    WHERE classified.entry_type = 'PAYMENT_CREDIT'
+                      AND classified.amount <> p.amount
+                  )::int AS payment_credit_amount_mismatch_count,
+                  COALESCE(BOOL_OR(classified.entry_type = 'REFUND_DEBIT'), false)
+                    AS refund_debit_exists
+             FROM ledger_entries classified
+            WHERE classified.organization_id = p.organization_id
+              AND classified.payment_id = p.payment_id
+         ) ledger_classification ON true
          LEFT JOIN LATERAL (
            SELECT s.settlement_id, s.status, s.amount, s.currency, s.settled_at
              FROM settlements s
@@ -269,6 +288,9 @@ export class InvestigationSourceRepository {
       orderSuccessfulPaymentAmount: row.order_successful_payment_amount,
       orderSuccessfulPaymentCount: row.order_successful_payment_count,
       postedPaymentCreditCount: row.posted_payment_credit_count,
+      paymentCreditCount: row.payment_credit_count,
+      paymentCreditAmountMismatchCount: row.payment_credit_amount_mismatch_count,
+      refundDebitExists: row.refund_debit_exists,
       settlementCount: row.settlement_count,
       providerHistory:
         row.provider_name === null ||

@@ -245,9 +245,26 @@ The R052/R055/R056 slice passed:
 - R055 uses only `webhook_events.processing_status = 'FAILED'` and `received_at`; RECEIVED
   events are not treated as failures.
 
-The verified rule coverage is 18 of 63 rules. The remaining rules are documented as
+The verified rule coverage at that point was 18 of 63 rules. The remaining rules are documented as
 under-tested, evidence-query blocked, or schema/external-data blocked in
 `RULE_COVERAGE_AUDIT.md`.
+
+## Ledger classification-rule verification — 2026-11-01
+
+The R023/R029/R043 slice passed:
+
+- R023 compares only `PAYMENT_CREDIT` ledger entries using PostgreSQL numeric
+  comparison; unrelated refund or fee entries cannot trigger it.
+- R029 and R043 share a tenant-scoped `REFUND_DEBIT` existence projection and do
+  not depend on the latest ledger entry.
+- Unit tests cover matching and mismatching payment-credit amounts, refund and
+  partial-refund statuses, FAILED/CANCELLED statuses, unrelated statuses,
+  missing evidence, stable evaluation, and independent findings.
+- PostgreSQL integration coverage verifies multiple ledger entries, entry-type
+  filtering, exact amount behavior, cross-tenant isolation, and no regression in
+  existing ledger and settlement rules.
+
+Verified coverage is now 21 of 63 rules; no claim of full catalogue coverage is made.
 
 ## Cache correctness and concurrency verification — 2026-10-28
 

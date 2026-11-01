@@ -38,6 +38,9 @@ function evidence(
     orderSuccessfulPaymentAmount: null,
     orderSuccessfulPaymentCount: null,
     postedPaymentCreditCount: null,
+    paymentCreditCount: null,
+    paymentCreditAmountMismatchCount: null,
+    refundDebitExists: null,
     settlementCount: 0,
     burstFailedPaymentCount: null,
     failureRateFailedPaymentCount: null,
@@ -308,6 +311,87 @@ void test('aggregate rules respect exact boundaries and missing aggregate eviden
     );
   }
   assert.equal(missing.evaluations.find((item) => item.ruleId === 'R037')?.status, 'NO_MATCH');
+});
+
+void test('ledger classification rules use entry types and preserve independent predicates', () => {
+  const engine = new InvestigationEngine();
+  const matchingCredit = {
+    entryId: '11111111-1111-4111-8111-111111111111',
+    amount: '1000.00',
+    currency: 'INR',
+    status: 'POSTED' as const,
+  };
+  const base = {
+    ...evidence(),
+    ledger: matchingCredit,
+    paymentCreditCount: 1,
+    paymentCreditAmountMismatchCount: 0,
+    refundDebitExists: true,
+  };
+  assert.equal(
+    engine.evaluate(base, evaluatedAt).evaluations.find((item) => item.ruleId === 'R023')?.status,
+    'NO_MATCH',
+  );
+  assert.equal(
+    engine.evaluate(base, evaluatedAt).evaluations.find((item) => item.ruleId === 'R029')?.status,
+    'MATCH',
+  );
+  assert.equal(
+    engine
+      .evaluate({ ...base, payment: { ...base.payment, status: 'REFUNDED' } }, evaluatedAt)
+      .evaluations.find((item) => item.ruleId === 'R029')?.status,
+    'NO_MATCH',
+  );
+  assert.equal(
+    engine
+      .evaluate(
+        { ...base, payment: { ...base.payment, status: 'PARTIALLY_REFUNDED' } },
+        evaluatedAt,
+      )
+      .evaluations.find((item) => item.ruleId === 'R029')?.status,
+    'NO_MATCH',
+  );
+  assert.equal(
+    engine
+      .evaluate({ ...base, payment: { ...base.payment, status: 'FAILED' } }, evaluatedAt)
+      .evaluations.find((item) => item.ruleId === 'R043')?.status,
+    'MATCH',
+  );
+  assert.equal(
+    engine
+      .evaluate({ ...base, payment: { ...base.payment, status: 'CANCELLED' } }, evaluatedAt)
+      .evaluations.find((item) => item.ruleId === 'R043')?.status,
+    'MATCH',
+  );
+  assert.equal(
+    engine
+      .evaluate({ ...base, payment: { ...base.payment, status: 'SUCCESS' } }, evaluatedAt)
+      .evaluations.find((item) => item.ruleId === 'R043')?.status,
+    'NO_MATCH',
+  );
+  const mismatch = engine.evaluate({ ...base, paymentCreditAmountMismatchCount: 1 }, evaluatedAt);
+  assert.equal(mismatch.evaluations.find((item) => item.ruleId === 'R023')?.status, 'MATCH');
+  assert.equal(mismatch.findings.find((item) => item.ruleId === 'R023')?.severity, 'CRITICAL');
+  assert.equal(mismatch.findings.find((item) => item.ruleId === 'R029')?.severity, 'HIGH');
+  assert.equal(
+    mismatch.findings.find((item) => item.ruleId === 'R043'),
+    undefined,
+  );
+  const missing = engine.evaluate(
+    {
+      ...evidence(),
+      paymentCreditCount: null,
+      paymentCreditAmountMismatchCount: null,
+      refundDebitExists: null,
+    },
+    evaluatedAt,
+  );
+  for (const ruleId of ['R023', 'R029', 'R043']) {
+    assert.equal(
+      missing.evaluations.find((item) => item.ruleId === ruleId)?.status,
+      'INSUFFICIENT_EVIDENCE',
+    );
+  }
 });
 
 void test('R052, R055, and R056 use strict configured thresholds', () => {

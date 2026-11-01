@@ -47,13 +47,13 @@ evidence.
 | R020 | Webhook received after settled settlement               | IMPLEMENTED_VERIFIED           | Direct late, early, and missing settlement-timestamp tests verify the INFO finding and insufficient-evidence behavior                 |
 | R021 | Successful payment has no ledger entry                  | IMPLEMENTED_VERIFIED           | Engine now uses the specification ID and the existing SC-01 test verifies the finding                                                 |
 | R022 | Posted ledger for failed/cancelled/expired payment      | IMPLEMENTED_VERIFIED           | Existing latest-ledger evidence, direct rule tests, and live PostgreSQL query coverage verify tenant-safe evaluation                  |
-| R023 | Payment-credit ledger amount mismatch                   | BLOCKED_QUERY_OR_EVIDENCE      | Amounts are loaded, but ledger `entry_type` is not normalized                                                                         |
+| R023 | Payment-credit ledger amount mismatch                   | IMPLEMENTED_VERIFIED           | Tenant-scoped exact payment-credit amount mismatch aggregate and direct/live tests verify entry-type filtering                        |
 | R024 | Duplicate posted payment-credit ledger entries          | IMPLEMENTED_VERIFIED           | Tenant-scoped `POSTED`/`PAYMENT_CREDIT` count aggregate and live duplicate-ledger coverage are tested                                 |
 | R025 | Ledger pending beyond one hour                          | BLOCKED_QUERY_OR_EVIDENCE      | Ledger status exists, but ledger age is not loaded                                                                                    |
 | R026 | Journal debit/credit imbalance                          | BLOCKED_QUERY_OR_EVIDENCE      | Journal lines exist and ingestion validates them, but investigation evidence omits lines                                              |
 | R027 | Unexpected ledger account code                          | BLOCKED_QUERY_OR_EVIDENCE      | Ledger accounts exist, but account code/allowlist is not in evidence                                                                  |
 | R028 | Reversed ledger without payment reversal reason         | NOT_STARTED_SCHEMA_OR_EXTERNAL | Reversal reason and corresponding payment reversal history are absent                                                                 |
-| R029 | Refund debit without refund payment status              | BLOCKED_QUERY_OR_EVIDENCE      | Ledger entry type is not loaded into evidence                                                                                         |
+| R029 | Refund debit without refund payment status              | IMPLEMENTED_VERIFIED           | Tenant-scoped refund-debit existence projection detects non-refund payment statuses, including non-latest entries                     |
 | R030 | Missing fee debit above threshold                       | BLOCKED_QUERY_OR_EVIDENCE      | Ledger rows exist, but entry-type aggregate and fee threshold evidence are absent                                                     |
 | R031 | Successful payment missing settlement past threshold    | BLOCKED_QUERY_OR_EVIDENCE      | Payment/settlement presence is loaded, but settlement threshold configuration/timing is absent                                        |
 | R032 | Settlement net amount reconciliation mismatch           | NOT_STARTED_SCHEMA_OR_EXTERNAL | Current settlement model lacks net amount, fees, and allocation amounts                                                               |
@@ -67,7 +67,7 @@ evidence.
 | R040 | Paid/order-complete payment missing settlement          | BLOCKED_QUERY_OR_EVIDENCE      | Required payment/order/webhook/settlement facts are available, but no rule/threshold evaluation exists                                |
 | R041 | Failed payment with paid order                          | IMPLEMENTED_VERIFIED           | Separate CRITICAL R041 evaluation and regression test preserve the distinct cross-domain rule; AI synthesis remains unavailable       |
 | R042 | Processed webhook and ledger with pending order         | IMPLEMENTED_UNDERTESTED        | Existing webhook, ledger, order, and payment evidence supports deterministic evaluation; direct positive/insufficient tests exist     |
-| R043 | Refund debit for failed/cancelled payment               | BLOCKED_QUERY_OR_EVIDENCE      | Payment status exists, but ledger entry type is not loaded                                                                            |
+| R043 | Refund debit for failed/cancelled payment               | IMPLEMENTED_VERIFIED           | Shared refund-debit existence evidence and independent FAILED/CANCELLED evaluation are covered by unit/live tests                     |
 | R044 | Completed pre-settlement pipeline with no settlement    | IMPLEMENTED_UNDERTESTED        | Existing payment/order/ledger evidence and authoritative settlement absence support deterministic evaluation                          |
 | R045 | Disputed payment without open incident                  | NOT_STARTED_SCHEMA_OR_EXTERNAL | No open-incident evidence/query is implemented                                                                                        |
 | R046 | Cancelled payment with unreversed posted ledger         | NOT_STARTED_SCHEMA_OR_EXTERNAL | Reversal-entry history is not represented in normalized evidence                                                                      |
@@ -91,10 +91,10 @@ evidence.
 
 ## Coverage summary
 
-- **Implemented and directly verified:** 18 rules — R001, R004, R005, R009, R010, R012, R020, R021, R022, R024, R035, R037, R039, R041, R052, R055, R056, and R060.
+- **Implemented and directly verified:** 21 rules — R001, R004, R005, R009, R010, R012, R020, R021, R022, R023, R024, R029, R035, R037, R039, R041, R043, R052, R055, R056, and R060.
 - **Implemented but under-tested:** 10 rules — R002, R003, R006-R008, R011, R033, R036, R042, and R044.
 - **Partial or misidentified:** none among R004, R020, R021, R039, and R041 after this correction.
-- **Blocked primarily by missing evidence queries/normalization:** 18 rules — R014-R019, R023, R025-R027, R029-R031, R034, R038, R040, R043, and R049.
+- **Blocked primarily by missing evidence queries/normalization:** 15 rules — R014-R019, R025-R027, R030-R031, R034, R038, R040, and R049.
 - **Not started because required schema, audit, incident, or external data is absent:** 17 rules — R013, R028, R032, R045-R048, R050-R051, R053-R054, R057-R059, and R061-R063.
 
 The counts intentionally distinguish a rule whose data exists but is not queried from a rule that

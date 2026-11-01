@@ -108,6 +108,9 @@ export class InvestigationEngine {
     const successfulPaymentAmount = evidence.orderSuccessfulPaymentAmount;
     const successfulPaymentCount = evidence.orderSuccessfulPaymentCount;
     const postedPaymentCreditCount = evidence.postedPaymentCreditCount;
+    const paymentCreditCount = evidence.paymentCreditCount;
+    const paymentCreditAmountMismatchCount = evidence.paymentCreditAmountMismatchCount;
+    const refundDebitExists = evidence.refundDebitExists;
     const settlementTimestamp = timestampOrNull(evidence.settlement?.settledAt);
     const lateSettlementWebhook =
       webhook !== null &&
@@ -344,6 +347,36 @@ export class InvestigationEngine {
         ['payment.paymentId', 'postedPaymentCreditCount'],
       ),
       evaluateRule(
+        'R023',
+        paymentCreditCount === null || paymentCreditAmountMismatchCount === null
+          ? 'INSUFFICIENT_EVIDENCE'
+          : paymentCreditAmountMismatchCount > 0
+            ? 'MATCH'
+            : 'NO_MATCH',
+        paymentCreditCount === null || paymentCreditAmountMismatchCount === null
+          ? 'Payment-credit ledger evidence is unavailable; amount reconciliation cannot be evaluated.'
+          : paymentCreditAmountMismatchCount > 0
+            ? 'A payment-credit ledger amount does not match the payment amount.'
+            : paymentCreditCount === 0
+              ? 'No payment-credit ledger entry exists for the payment.'
+              : 'All payment-credit ledger amounts match the payment amount.',
+        ['payment.amount', 'ledger.paymentCreditAmountMismatchCount'],
+      ),
+      evaluateRule(
+        'R029',
+        refundDebitExists === null
+          ? 'INSUFFICIENT_EVIDENCE'
+          : refundDebitExists && !['REFUNDED', 'PARTIALLY_REFUNDED'].includes(payment.status)
+            ? 'MATCH'
+            : 'NO_MATCH',
+        refundDebitExists === null
+          ? 'Ledger entry-type evidence is unavailable; refund status consistency cannot be evaluated.'
+          : refundDebitExists && !['REFUNDED', 'PARTIALLY_REFUNDED'].includes(payment.status)
+            ? 'A refund debit exists while the payment is not in a refund status.'
+            : 'Refund debit and payment refund status are consistent.',
+        ['ledger.refundDebitExists', 'payment.status'],
+      ),
+      evaluateRule(
         'R033',
         evidence.settlement === null
           ? 'INSUFFICIENT_EVIDENCE'
@@ -439,6 +472,20 @@ export class InvestigationEngine {
             ? 'Payment, webhook, and ledger processing completed while the order remains pending.'
             : 'Payment, webhook, ledger, and order state do not match the R042 condition.',
         ['ledger.status', 'order.status', 'payment.status', 'webhook.processingStatus'],
+      ),
+      evaluateRule(
+        'R043',
+        refundDebitExists === null
+          ? 'INSUFFICIENT_EVIDENCE'
+          : refundDebitExists && ['FAILED', 'CANCELLED'].includes(payment.status)
+            ? 'MATCH'
+            : 'NO_MATCH',
+        refundDebitExists === null
+          ? 'Ledger entry-type evidence is unavailable; refund activity for failed or cancelled payments cannot be evaluated.'
+          : refundDebitExists && ['FAILED', 'CANCELLED'].includes(payment.status)
+            ? 'A refund debit exists for a failed or cancelled payment.'
+            : 'No refund debit exists for a failed or cancelled payment.',
+        ['ledger.refundDebitExists', 'payment.status'],
       ),
       evaluateRule(
         'R044',
@@ -553,18 +600,21 @@ export class InvestigationEngine {
       'R012',
       'R021',
       'R022',
+      'R023',
       'R024',
       'R033',
       'R035',
       'R037',
       'R039',
       'R041',
+      'R043',
       'R060',
     ]);
     const highRules = new Set([
       'R001',
       'R002',
       'R003',
+      'R029',
       'R036',
       'R042',
       'R044',

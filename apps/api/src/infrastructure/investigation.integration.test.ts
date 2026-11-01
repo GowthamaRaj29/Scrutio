@@ -101,7 +101,13 @@ void test('PostgreSQL investigation evidence remains tenant-scoped for ledger an
     await adminDatabase.query(
       `INSERT INTO ledger_entries
          (organization_id, payment_id, account_id, entry_type, status, amount, currency)
-       VALUES ($1, 'RULE-PAYMENT-001', $2, 'PAYMENT_CREDIT', 'POSTED', 100.00, 'INR')`,
+       VALUES ($1, 'RULE-PAYMENT-001', $2, 'PAYMENT_CREDIT', 'POSTED', 101.00, 'INR')`,
+      [organizationId, accountId],
+    );
+    await adminDatabase.query(
+      `INSERT INTO ledger_entries
+       (organization_id, payment_id, account_id, entry_type, status, amount, currency)
+       VALUES ($1, 'RULE-PAYMENT-001', $2, 'REFUND_DEBIT', 'POSTED', 10.00, 'INR')`,
       [organizationId, accountId],
     );
     await adminDatabase.query(
@@ -160,6 +166,15 @@ void test('PostgreSQL investigation evidence remains tenant-scoped for ledger an
     assert.equal(
       result.findings.some((finding) => finding.ruleId === 'R037'),
       true,
+    );
+    assert.equal(
+      result.findings.find((finding) => finding.ruleId === 'R023')?.severity,
+      'CRITICAL',
+    );
+    assert.equal(result.findings.find((finding) => finding.ruleId === 'R029')?.severity, 'HIGH');
+    assert.equal(
+      result.findings.find((finding) => finding.ruleId === 'R043')?.severity,
+      'CRITICAL',
     );
     assert.equal(
       result.findings.some((finding) => finding.ruleId === 'R036'),
