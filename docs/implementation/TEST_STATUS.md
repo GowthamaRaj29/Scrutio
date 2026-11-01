@@ -310,6 +310,23 @@ The evaluator review added direct coverage for ten previously under-tested rules
 This is evaluator-level verification. It does not claim new live PostgreSQL evidence coverage;
 tenant-scoped integration validation remains a separate follow-up.
 
+## Persistence and tenant-isolation verification — 2026-11-01
+
+The live PostgreSQL integration suite passed with the least-privilege application role:
+
+- Tenant-scoped fixtures exercise R002/R003/R006/R007/R008/R011/R033/R036/R042/R044.
+- Cross-tenant lookups return no evidence under the other tenant's transaction context.
+- Repeated evidence reads are byte-equivalent for the same tenant, payment, and evaluation time.
+- A persisted payment with no order, webhook, ledger, or settlement remains distinguishable:
+  the affected rules return `INSUFFICIENT_EVIDENCE`, not `NO_MATCH`.
+- Forced RLS and transaction-local organization context remain enforced by the existing
+  PostgreSQL integration tests.
+- Investigation persistence accepts repeated evaluations as separate records with the same
+  input fingerprint; retrieval remains tenant-scoped.
+
+The integration command passed all **4 PostgreSQL tests**. Coverage remains 33 of 63 directly
+verified rules, now with live tenant-scoped evidence for this slice.
+
 ## Cache correctness and concurrency verification — 2026-10-28
 
 `npm run check` passed:

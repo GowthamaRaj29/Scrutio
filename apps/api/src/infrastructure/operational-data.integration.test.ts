@@ -119,6 +119,19 @@ void test('operational data migration enforces tenant integrity and persists inv
       assert.equal(created.organizationId, organizationId);
       const loaded = await repository.findById(organizationId, created.id);
       assert.deepEqual(loaded, created);
+      const repeated = await repository.create(organizationId, {
+        organizationId,
+        requestedBy: userId,
+        paymentId,
+        status: 'PARTIAL',
+        ruleSetVersion: '2026-10-28.v1',
+        evaluationTimestamp: '2026-10-28T12:00:00.000Z',
+        inputFingerprint: 'a'.repeat(64),
+        result: { status: 'insufficient_evidence' },
+      });
+      assert.notEqual(repeated.id, created.id);
+      assert.equal(repeated.inputFingerprint, created.inputFingerprint);
+      assert.deepEqual(await repository.findById(organizationId, repeated.id), repeated);
       const crossTenant = await repository.findById(otherOrganizationId, created.id);
       assert.equal(crossTenant, null);
     });
