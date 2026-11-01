@@ -45,14 +45,27 @@ type SourceRow = {
   provider_observed_status: string | null;
   provider_observed_at: Date | null;
   duplicate_provider_payment_ids: string[];
+  burst_failed_payment_count: number | null;
+  failure_rate_failed_payment_count: number | null;
+  failure_rate_eligible_payment_count: number | null;
+  webhook_failure_count: number | null;
+};
+
+export type InvestigationAggregateWindows = {
+  burstFailureWindowHours: number;
+  webhookStormWindowMinutes: number;
 };
 
 export class InvestigationSourceRepository {
-  public constructor(private readonly database: Queryable) {}
+  public constructor(
+    private readonly database: Queryable,
+    private readonly aggregateWindows: InvestigationAggregateWindows,
+  ) {}
 
   public async findEvidence(
     organizationId: string,
     paymentId: string,
+    evaluatedAt: string,
   ): Promise<InvestigationEvidence | null> {
     const result = await this.database.query<SourceRow>(
       `SELECT p.organization_id, p.payment_id, p.provider AS payment_provider,
@@ -81,6 +94,10 @@ export class InvestigationSourceRepository {
               pe.provider_reference_id, pe.observed_status AS provider_observed_status,
               pe.observed_at AS provider_observed_at,
               COALESCE(duplicates.payment_ids, ARRAY[]::varchar[]) AS duplicate_provider_payment_ids
+              ,burst_totals.failed_payment_count AS burst_failed_payment_count
+              ,rate_totals.failed_payment_count AS failure_rate_failed_payment_count
+              ,rate_totals.eligible_payment_count AS failure_rate_eligible_payment_count
+              ,webhook_totals.failed_event_count AS webhook_failure_count
          FROM payments p
          LEFT JOIN orders o
            ON o.organization_id = p.organization_id AND o.order_id = p.order_id
@@ -147,8 +164,40 @@ export class InvestigationSourceRepository {
               AND duplicate.provider_reference_id = p.provider_reference_id
               AND duplicate.payment_id <> p.payment_id
          ) duplicates ON true
+         LEFT JOIN LATERAL (
+           SELECT COUNT(DISTINCT failed.payment_id)::int AS failed_payment_count
+             FROM provider_payment_events failed
+            WHERE failed.organization_id = p.organization_id
+              AND failed.observed_status = 'FAILED'
+              AND failed.observed_at > $3::timestamptz - ($4::int * INTERVAL '1 hour')
+              AND failed.observed_at <= $3::timestamptz
+         ) burst_totals ON true
+         LEFT JOIN LATERAL (
+           SELECT COUNT(DISTINCT CASE WHEN events.observed_status = 'FAILED' THEN events.payment_id END)::int
+                    AS failed_payment_count,
+                  COUNT(DISTINCT events.payment_id)::int AS eligible_payment_count
+             FROM provider_payment_events events
+            WHERE events.organization_id = p.organization_id
+              AND events.observed_status IN ('FAILED', 'SUCCESS')
+              AND events.observed_at > $3::timestamptz - INTERVAL '1 hour'
+              AND events.observed_at <= $3::timestamptz
+         ) rate_totals ON true
+         LEFT JOIN LATERAL (
+           SELECT COUNT(DISTINCT failed.event_id)::int AS failed_event_count
+             FROM webhook_events failed
+            WHERE failed.organization_id = p.organization_id
+              AND failed.processing_status = 'FAILED'
+              AND failed.received_at > $3::timestamptz - ($5::int * INTERVAL '1 minute')
+              AND failed.received_at <= $3::timestamptz
+         ) webhook_totals ON true
         WHERE p.organization_id = $1 AND p.payment_id = $2`,
-      [organizationId, paymentId],
+      [
+        organizationId,
+        paymentId,
+        evaluatedAt,
+        this.aggregateWindows.burstFailureWindowHours,
+        this.aggregateWindows.webhookStormWindowMinutes,
+      ],
     );
     const row = result.rows[0];
     if (row === undefined) {
@@ -235,6 +284,10 @@ export class InvestigationSourceRepository {
               observedAt: row.provider_observed_at.toISOString(),
             },
       duplicateProviderPaymentIds: row.duplicate_provider_payment_ids,
+      burstFailedPaymentCount: row.burst_failed_payment_count,
+      failureRateFailedPaymentCount: row.failure_rate_failed_payment_count,
+      failureRateEligiblePaymentCount: row.failure_rate_eligible_payment_count,
+      webhookFailureCount: row.webhook_failure_count,
     });
   }
 }

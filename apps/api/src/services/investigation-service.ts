@@ -25,8 +25,15 @@ export class InvestigationService {
     evaluationTimestamp: string,
   ): Promise<PersistedInvestigation> {
     return this.database.withTransaction(organizationId, async (client) => {
-      const sourceRepository = new InvestigationSourceRepository(client);
-      const evidence = await sourceRepository.findEvidence(organizationId, paymentId);
+      const sourceRepository = new InvestigationSourceRepository(client, {
+        burstFailureWindowHours: this.engine.ruleConfig.burstFailureWindowHours,
+        webhookStormWindowMinutes: this.engine.ruleConfig.webhookStormWindowMinutes,
+      });
+      const evidence = await sourceRepository.findEvidence(
+        organizationId,
+        paymentId,
+        evaluationTimestamp,
+      );
       if (evidence === null) {
         throw new InvestigationNotFoundError();
       }

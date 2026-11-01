@@ -39,6 +39,10 @@ function evidence(
     orderSuccessfulPaymentCount: null,
     postedPaymentCreditCount: null,
     settlementCount: 0,
+    burstFailedPaymentCount: null,
+    failureRateFailedPaymentCount: null,
+    failureRateEligiblePaymentCount: null,
+    webhookFailureCount: null,
   };
 }
 
@@ -306,14 +310,85 @@ void test('aggregate rules respect exact boundaries and missing aggregate eviden
   assert.equal(missing.evaluations.find((item) => item.ruleId === 'R037')?.status, 'NO_MATCH');
 });
 
+void test('R052, R055, and R056 use strict configured thresholds', () => {
+  const engine = new InvestigationEngine({
+    pendingPaymentThresholdMinutes: 30,
+    webhookUnprocessedThresholdMinutes: 5,
+    burstFailureWindowHours: 1,
+    burstFailureCountThreshold: 5,
+    webhookStormWindowMinutes: 10,
+    webhookStormCountThreshold: 12,
+    failureRateThresholdPct: 50,
+  });
+  const above = engine.evaluate(
+    {
+      ...evidence(),
+      burstFailedPaymentCount: 6,
+      webhookFailureCount: 13,
+      failureRateFailedPaymentCount: 6,
+      failureRateEligiblePaymentCount: 10,
+    },
+    evaluatedAt,
+  );
+  assert.deepEqual(
+    ['R052', 'R055', 'R056'].map(
+      (ruleId) => above.evaluations.find((item) => item.ruleId === ruleId)?.status,
+    ),
+    ['MATCH', 'MATCH', 'MATCH'],
+  );
+
+  const atBoundary = engine.evaluate(
+    {
+      ...evidence(),
+      burstFailedPaymentCount: 5,
+      webhookFailureCount: 12,
+      failureRateFailedPaymentCount: 5,
+      failureRateEligiblePaymentCount: 10,
+    },
+    evaluatedAt,
+  );
+  assert.deepEqual(
+    ['R052', 'R055', 'R056'].map(
+      (ruleId) => atBoundary.evaluations.find((item) => item.ruleId === ruleId)?.status,
+    ),
+    ['NO_MATCH', 'NO_MATCH', 'NO_MATCH'],
+  );
+
+  const insufficient = engine.evaluate(evidence(), evaluatedAt);
+  assert.deepEqual(
+    ['R052', 'R055', 'R056'].map(
+      (ruleId) => insufficient.evaluations.find((item) => item.ruleId === ruleId)?.status,
+    ),
+    ['INSUFFICIENT_EVIDENCE', 'INSUFFICIENT_EVIDENCE', 'INSUFFICIENT_EVIDENCE'],
+  );
+  const zeroEligible = engine.evaluate(
+    { ...evidence(), failureRateFailedPaymentCount: 0, failureRateEligiblePaymentCount: 0 },
+    evaluatedAt,
+  );
+  assert.equal(
+    zeroEligible.evaluations.find((item) => item.ruleId === 'R056')?.status,
+    'INSUFFICIENT_EVIDENCE',
+  );
+});
+
 void test('threshold boundary is inclusive and below-threshold data does not match', () => {
   const atThreshold = new InvestigationEngine({
     pendingPaymentThresholdMinutes: 30,
     webhookUnprocessedThresholdMinutes: 5,
+    burstFailureWindowHours: 1,
+    burstFailureCountThreshold: 5,
+    webhookStormWindowMinutes: 10,
+    webhookStormCountThreshold: 12,
+    failureRateThresholdPct: 50,
   }).evaluate(evidence({ status: 'PENDING', updatedAt: '2026-10-28T11:30:00.000Z' }), evaluatedAt);
   const belowThreshold = new InvestigationEngine({
     pendingPaymentThresholdMinutes: 30,
     webhookUnprocessedThresholdMinutes: 5,
+    burstFailureWindowHours: 1,
+    burstFailureCountThreshold: 5,
+    webhookStormWindowMinutes: 10,
+    webhookStormCountThreshold: 12,
+    failureRateThresholdPct: 50,
   }).evaluate(evidence({ status: 'PENDING', updatedAt: '2026-10-28T11:30:01.000Z' }), evaluatedAt);
   assert.equal(atThreshold.evaluations.find((item) => item.ruleId === 'R005')?.status, 'MATCH');
   assert.equal(

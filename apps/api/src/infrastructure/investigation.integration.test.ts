@@ -48,6 +48,41 @@ void test('PostgreSQL investigation evidence remains tenant-scoped for ledger an
          SET status = EXCLUDED.status, order_status = EXCLUDED.order_status`,
       [organizationId, otherOrganizationId],
     );
+    const patternPayments = Array.from(
+      { length: 10 },
+      (_, index) => `RULE-PATTERN-${String(index + 1)}`,
+    );
+    for (const [index, patternPaymentId] of patternPayments.entries()) {
+      await adminDatabase.query(
+        `INSERT INTO payments
+           (organization_id, payment_id, amount, status, order_status,
+            webhook_processed, ledger_entry_present, updated_at)
+         VALUES ($1, $2, 100.00, $3, 'PAID', true, true, '2026-10-28T11:30:00Z')
+         ON CONFLICT (organization_id, payment_id) DO NOTHING`,
+        [organizationId, patternPaymentId, index < 6 ? 'FAILED' : 'SUCCESS'],
+      );
+      await adminDatabase.query(
+        `INSERT INTO provider_payment_events
+           (organization_id, payment_id, provider, provider_event_id, observed_status, observed_at)
+         VALUES ($1, $2, 'test-provider', $3, $4, '2026-10-28T11:30:00Z')`,
+        [
+          organizationId,
+          patternPaymentId,
+          `RULE-PATTERN-EVENT-${String(index + 1)}`,
+          index < 6 ? 'FAILED' : 'SUCCESS',
+        ],
+      );
+    }
+    for (let index = 0; index < 13; index += 1) {
+      await adminDatabase.query(
+        `INSERT INTO webhook_events
+           (organization_id, event_id, payment_id, event_type, signature_verified,
+            processing_status, received_at)
+         VALUES ($1, $2, 'RULE-PATTERN-1', 'payment.failed', true, 'FAILED',
+                 '2026-10-28T11:55:00Z')`,
+        [organizationId, `RULE-PATTERN-WEBHOOK-${String(index + 1)}`],
+      );
+    }
     await adminDatabase.query(
       `INSERT INTO ledger_accounts (id, organization_id, account_code, account_type)
        VALUES ($1, $2, 'RULE-CASH', 'ASSET')
@@ -95,7 +130,10 @@ void test('PostgreSQL investigation evidence remains tenant-scoped for ledger an
     );
 
     const evidence = await appDatabase.withTransaction(organizationId, (client) =>
-      new InvestigationSourceRepository(client).findEvidence(organizationId, 'RULE-PAYMENT-001'),
+      new InvestigationSourceRepository(client, {
+        burstFailureWindowHours: 1,
+        webhookStormWindowMinutes: 10,
+      }).findEvidence(organizationId, 'RULE-PAYMENT-001', '2026-10-28T12:00:00.000Z'),
     );
     assert.ok(evidence);
     const result = new InvestigationEngine().evaluate(evidence, '2026-10-28T12:00:00.000Z');
@@ -127,12 +165,26 @@ void test('PostgreSQL investigation evidence remains tenant-scoped for ledger an
       result.findings.some((finding) => finding.ruleId === 'R036'),
       false,
     );
+    assert.equal(result.findings.find((finding) => finding.ruleId === 'R052')?.severity, 'HIGH');
+    assert.equal(result.findings.find((finding) => finding.ruleId === 'R055')?.severity, 'HIGH');
+    assert.equal(result.findings.find((finding) => finding.ruleId === 'R056')?.severity, 'HIGH');
 
     const crossTenantEvidence = await appDatabase.withTransaction(organizationId, (client) =>
-      new InvestigationSourceRepository(client).findEvidence(organizationId, 'RULE-PAYMENT-001'),
+      new InvestigationSourceRepository(client, {
+        burstFailureWindowHours: 1,
+        webhookStormWindowMinutes: 10,
+      }).findEvidence(organizationId, 'RULE-PAYMENT-001', '2026-10-28T12:00:00.000Z'),
     );
     assert.equal(crossTenantEvidence?.payment.organizationId, organizationId);
   } finally {
+    await adminDatabase.query('DELETE FROM webhook_events WHERE organization_id IN ($1, $2)', [
+      organizationId,
+      otherOrganizationId,
+    ]);
+    await adminDatabase.query(
+      'DELETE FROM provider_payment_events WHERE organization_id IN ($1, $2)',
+      [organizationId, otherOrganizationId],
+    );
     await adminDatabase.query('DELETE FROM settlements WHERE organization_id IN ($1, $2)', [
       organizationId,
       otherOrganizationId,

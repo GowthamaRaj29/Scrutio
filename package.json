@@ -14,8 +14,8 @@
     "format:check": "prettier --check .",
     "lint": "eslint . --max-warnings 0",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "tsx --test apps/api/src/services/payment-status-service.test.ts apps/api/src/services/auth-service.test.ts apps/api/src/services/investigation-engine.test.ts",
-    "test:integration": "node --env-file=.env --import tsx --test apps/api/src/infrastructure/postgres.integration.test.ts apps/api/src/infrastructure/auth.integration.test.ts apps/api/src/infrastructure/operational-data.integration.test.ts apps/api/src/infrastructure/investigation.integration.test.ts",
+    "test": "set BURST_FAILURE_WINDOW_HOURS=1&& set BURST_FAILURE_COUNT_THRESHOLD=5&& set WEBHOOK_STORM_WINDOW_MINUTES=10&& set WEBHOOK_STORM_COUNT_THRESHOLD=12&& set FAILURE_RATE_THRESHOLD_PCT=50&& tsx --test apps/api/src/config/index.test.ts apps/api/src/services/payment-status-service.test.ts apps/api/src/services/auth-service.test.ts apps/api/src/services/investigation-engine.test.ts",
+    "test:integration": "set BURST_FAILURE_WINDOW_HOURS=1&& set BURST_FAILURE_COUNT_THRESHOLD=5&& set WEBHOOK_STORM_WINDOW_MINUTES=10&& set WEBHOOK_STORM_COUNT_THRESHOLD=12&& set FAILURE_RATE_THRESHOLD_PCT=50&& node --env-file=.env --import tsx --test apps/api/src/infrastructure/postgres.integration.test.ts apps/api/src/infrastructure/auth.integration.test.ts apps/api/src/infrastructure/operational-data.integration.test.ts apps/api/src/infrastructure/investigation.integration.test.ts",
     "migrate": "node --env-file=.env --import tsx apps/api/src/infrastructure/migrations/run-migrations.ts",
     "dev": "tsx watch apps/api/src/server.ts",
     "start": "node dist/apps/api/src/server.js"

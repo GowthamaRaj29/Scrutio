@@ -13,6 +13,11 @@ const environmentSchema = z.object({
   CACHE_PAYMENT_STATUS_TTL_MS: z.coerce.number().int().positive().default(30_000),
   INCIDENT_PENDING_PAYMENT_THRESHOLD_MINUTES: z.coerce.number().int().positive().default(30),
   INCIDENT_WEBHOOK_UNPROCESSED_THRESHOLD_MINUTES: z.coerce.number().int().positive().default(5),
+  BURST_FAILURE_WINDOW_HOURS: z.coerce.number().int().positive(),
+  BURST_FAILURE_COUNT_THRESHOLD: z.coerce.number().int().positive(),
+  WEBHOOK_STORM_WINDOW_MINUTES: z.coerce.number().int().positive(),
+  WEBHOOK_STORM_COUNT_THRESHOLD: z.coerce.number().int().positive(),
+  FAILURE_RATE_THRESHOLD_PCT: z.coerce.number().positive().max(100),
 });
 
 export type AppConfig = {
@@ -28,6 +33,11 @@ export type AppConfig = {
   cachePaymentStatusTtlMs: number;
   incidentPendingPaymentThresholdMinutes: number;
   incidentWebhookUnprocessedThresholdMinutes: number;
+  burstFailureWindowHours: number;
+  burstFailureCountThreshold: number;
+  webhookStormWindowMinutes: number;
+  webhookStormCountThreshold: number;
+  failureRateThresholdPct: number;
 };
 
 export function loadConfig(environment: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -52,5 +62,10 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env): AppCon
     incidentPendingPaymentThresholdMinutes: parsed.INCIDENT_PENDING_PAYMENT_THRESHOLD_MINUTES,
     incidentWebhookUnprocessedThresholdMinutes:
       parsed.INCIDENT_WEBHOOK_UNPROCESSED_THRESHOLD_MINUTES,
+    burstFailureWindowHours: parsed.BURST_FAILURE_WINDOW_HOURS,
+    burstFailureCountThreshold: parsed.BURST_FAILURE_COUNT_THRESHOLD,
+    webhookStormWindowMinutes: parsed.WEBHOOK_STORM_WINDOW_MINUTES,
+    webhookStormCountThreshold: parsed.WEBHOOK_STORM_COUNT_THRESHOLD,
+    failureRateThresholdPct: parsed.FAILURE_RATE_THRESHOLD_PCT,
   };
 }

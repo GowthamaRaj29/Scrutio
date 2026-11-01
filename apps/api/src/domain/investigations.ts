@@ -73,6 +73,10 @@ export const investigationEvidenceSchema = z.object({
   orderSuccessfulPaymentCount: z.number().int().nonnegative().nullable().default(null),
   postedPaymentCreditCount: z.number().int().nonnegative().nullable().default(null),
   settlementCount: z.number().int().nonnegative().default(0),
+  burstFailedPaymentCount: z.number().int().nonnegative().nullable().default(null),
+  failureRateFailedPaymentCount: z.number().int().nonnegative().nullable().default(null),
+  failureRateEligiblePaymentCount: z.number().int().nonnegative().nullable().default(null),
+  webhookFailureCount: z.number().int().nonnegative().nullable().default(null),
   providerHistory: z
     .object({
       provider: z.string().min(1).max(100),

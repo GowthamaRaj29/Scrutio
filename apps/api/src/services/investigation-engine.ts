@@ -10,12 +10,22 @@ import { loadConfig } from '../config/index.js';
 export type InvestigationRuleConfig = {
   pendingPaymentThresholdMinutes: number;
   webhookUnprocessedThresholdMinutes: number;
+  burstFailureWindowHours: number;
+  burstFailureCountThreshold: number;
+  webhookStormWindowMinutes: number;
+  webhookStormCountThreshold: number;
+  failureRateThresholdPct: number;
 };
 
 const applicationConfig = loadConfig();
 export const defaultInvestigationRuleConfig: InvestigationRuleConfig = {
   pendingPaymentThresholdMinutes: applicationConfig.incidentPendingPaymentThresholdMinutes,
   webhookUnprocessedThresholdMinutes: applicationConfig.incidentWebhookUnprocessedThresholdMinutes,
+  burstFailureWindowHours: applicationConfig.burstFailureWindowHours,
+  burstFailureCountThreshold: applicationConfig.burstFailureCountThreshold,
+  webhookStormWindowMinutes: applicationConfig.webhookStormWindowMinutes,
+  webhookStormCountThreshold: applicationConfig.webhookStormCountThreshold,
+  failureRateThresholdPct: applicationConfig.failureRateThresholdPct,
 };
 
 const RULE_SET_VERSION = '2026-10-28.v1';
@@ -35,6 +45,14 @@ function moneyToCents(value: string): bigint {
 
 function exceedsOnePercent(total: string, orderAmount: string): boolean {
   return moneyToCents(total) * 100n > moneyToCents(orderAmount) * 101n;
+}
+
+function exceedsPercentage(numerator: number, denominator: number, thresholdPct: number): boolean {
+  const threshold = String(thresholdPct);
+  const [whole = '0', fraction = ''] = threshold.split('.');
+  const scale = 10n ** BigInt(fraction.length);
+  const thresholdScaled = BigInt(whole) * scale + BigInt(fraction || '0');
+  return BigInt(numerator) * 100n * scale > BigInt(denominator) * thresholdScaled;
 }
 
 function timestampOrNull(value: unknown): string | null {
@@ -57,10 +75,14 @@ function evaluateRule(
 }
 
 export class InvestigationEngine {
+  public readonly ruleConfig: InvestigationRuleConfig;
+
   public constructor(
-    private readonly ruleConfig: InvestigationRuleConfig = defaultInvestigationRuleConfig,
+    ruleConfig: InvestigationRuleConfig = defaultInvestigationRuleConfig,
     private readonly clock: () => Date = () => new Date(),
-  ) {}
+  ) {
+    this.ruleConfig = ruleConfig;
+  }
 
   public evaluate(input: unknown, evaluatedAt = this.clock().toISOString()): InvestigationResult {
     const evidence = investigationEvidenceSchema.parse(input);
@@ -471,6 +493,54 @@ export class InvestigationEngine {
           ...evidence.duplicateProviderPaymentIds.map((id) => `payment.duplicate.${id}`),
         ],
       ),
+      evaluateRule(
+        'R052',
+        evidence.burstFailedPaymentCount === null
+          ? 'INSUFFICIENT_EVIDENCE'
+          : evidence.burstFailedPaymentCount > this.ruleConfig.burstFailureCountThreshold
+            ? 'MATCH'
+            : 'NO_MATCH',
+        evidence.burstFailedPaymentCount === null
+          ? 'Burst payment-failure aggregate evidence is unavailable.'
+          : `The configured burst window contains ${String(evidence.burstFailedPaymentCount)} failed payments; threshold is ${String(this.ruleConfig.burstFailureCountThreshold)}.`,
+        ['payment.organizationId', 'aggregate.burstFailedPaymentCount'],
+      ),
+      evaluateRule(
+        'R055',
+        evidence.webhookFailureCount === null
+          ? 'INSUFFICIENT_EVIDENCE'
+          : evidence.webhookFailureCount > this.ruleConfig.webhookStormCountThreshold
+            ? 'MATCH'
+            : 'NO_MATCH',
+        evidence.webhookFailureCount === null
+          ? 'Webhook failure aggregate evidence is unavailable.'
+          : `The configured webhook storm window contains ${String(evidence.webhookFailureCount)} failed webhook events; threshold is ${String(this.ruleConfig.webhookStormCountThreshold)}.`,
+        ['payment.organizationId', 'aggregate.webhookFailureCount'],
+      ),
+      evaluateRule(
+        'R056',
+        evidence.failureRateFailedPaymentCount === null ||
+          evidence.failureRateEligiblePaymentCount === null ||
+          evidence.failureRateEligiblePaymentCount === 0
+          ? 'INSUFFICIENT_EVIDENCE'
+          : exceedsPercentage(
+                evidence.failureRateFailedPaymentCount,
+                evidence.failureRateEligiblePaymentCount,
+                this.ruleConfig.failureRateThresholdPct,
+              )
+            ? 'MATCH'
+            : 'NO_MATCH',
+        evidence.failureRateFailedPaymentCount === null ||
+          evidence.failureRateEligiblePaymentCount === null ||
+          evidence.failureRateEligiblePaymentCount === 0
+          ? 'Rolling payment failure-rate evidence is unavailable or contains no eligible observations.'
+          : `Rolling payment failure rate is ${String(evidence.failureRateFailedPaymentCount)}/${String(evidence.failureRateEligiblePaymentCount)}; threshold is ${String(this.ruleConfig.failureRateThresholdPct)}%.`,
+        [
+          'payment.organizationId',
+          'aggregate.failureRateFailedPaymentCount',
+          'aggregate.failureRateEligiblePaymentCount',
+        ],
+      ),
     );
     return evaluations.sort((left, right) => left.ruleId.localeCompare(right.ruleId));
   }
@@ -491,7 +561,17 @@ export class InvestigationEngine {
       'R041',
       'R060',
     ]);
-    const highRules = new Set(['R001', 'R002', 'R003', 'R036', 'R042', 'R044']);
+    const highRules = new Set([
+      'R001',
+      'R002',
+      'R003',
+      'R036',
+      'R042',
+      'R044',
+      'R052',
+      'R055',
+      'R056',
+    ]);
     return {
       ruleId: evaluation.ruleId,
       ruleVersion: evaluation.version,

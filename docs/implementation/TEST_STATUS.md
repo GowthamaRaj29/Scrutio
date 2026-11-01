@@ -228,6 +228,27 @@ webhook in addition to the pending order/no-ledger state, and R041 remains a dis
 cross-domain finding from R004. No AI call was added; the specification's R041 AI flag remains a
 future synthesis concern outside the deterministic engine.
 
+## Rolling pattern-rule verification — 2026-11-01
+
+The R052/R055/R056 slice passed:
+
+- Configuration unit tests reject missing, zero, negative, non-numeric, and over-100
+  percentage values; no application defaults were added.
+- Engine unit tests verify strict below/equal/above threshold behavior, missing evidence,
+  zero eligible observations, and deterministic status evaluation.
+- PostgreSQL integration tests verify tenant-scoped bounded aggregates, overlapping payment
+  identifiers across organizations, strict configured thresholds, and FAILED webhook-event
+  counting. Webhook delivery identity remains unique under the existing
+  `(organization_id, event_id)` constraint.
+- R052 and R056 use `provider_payment_events.observed_at` and distinct payment IDs rather
+  than `payments.updated_at`, which is also changed by unrelated mutations.
+- R055 uses only `webhook_events.processing_status = 'FAILED'` and `received_at`; RECEIVED
+  events are not treated as failures.
+
+The verified rule coverage is 18 of 63 rules. The remaining rules are documented as
+under-tested, evidence-query blocked, or schema/external-data blocked in
+`RULE_COVERAGE_AUDIT.md`.
+
 ## Cache correctness and concurrency verification — 2026-10-28
 
 `npm run check` passed:
