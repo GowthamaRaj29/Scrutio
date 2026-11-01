@@ -11,6 +11,12 @@ permissions:
 jobs:
   quality:
     runs-on: ubuntu-latest
+    env:
+      BURST_FAILURE_WINDOW_HOURS: 1
+      BURST_FAILURE_COUNT_THRESHOLD: 5
+      WEBHOOK_STORM_WINDOW_MINUTES: 10
+      WEBHOOK_STORM_COUNT_THRESHOLD: 12
+      FAILURE_RATE_THRESHOLD_PCT: 50
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
